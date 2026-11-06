@@ -19,15 +19,18 @@ const num = (value, max, decimals = 1) => {
 const clip = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
 const PROMPT = `You are a measuring teacher. A person sent a photo of themselves, and maybe a note.
+Guess every measurement from what you can see. A tape in the frame is a reading. A mirror selfie with no tape is still a guess, not a blank.
 Return JSON only, no markdown:
 {"chest": number, "waist": number, "hips": number, "neck": number, "shoulders": number, "arm": number, "thigh": number, "calf": number, "weight": number, "bodyFat": number, "confidence": "low"|"medium"|"high", "lesson": string, "steps": [string, string, string], "note": string}
 Rules:
-- Lengths are centimeters. weight is kilograms. bodyFat is a percent. Use 0 when the photo cannot support that number.
-- A mirror selfie without a tape is a rough visual estimate. Say that in lesson and set confidence to low.
-- lesson is two or three sentences: where the tape goes for the sites you could see, and what to fix in the next photo (feet together, arms relaxed, tape level at the navel, same time of day).
-- steps are three short actions they can do with a tape this week.
-- note is one sentence on what changed if a previous check-in is included, otherwise the main assumption.
-- If a correction is included, treat it as fact and teach around the corrected numbers.`
+- Lengths are centimeters. weight is kilograms. bodyFat is a percent. Numbers, not strings.
+- Fill every field with your best visual guess. Use 0 only for a site that is out of frame.
+- No tape means confidence low. A clear tape on one site can be medium. Do not claim high unless a tape reading is visible.
+- Keep guesses in a normal adult range unless the photo or note clearly says otherwise. If they give a height or a past measurement, use it.
+- lesson is two sentences: what you assumed, and where a tape would go to check the least certain site.
+- steps are three short checks they can do with a tape.
+- note is one sentence naming the guess you are least sure about.
+- If a correction is included, treat it as fact and only change what they dispute.`
 
 export function emptyMeasure() {
   return { checks: [], rewards: [] }

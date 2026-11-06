@@ -146,22 +146,23 @@ export default function Measure() {
 
     <div className="card">
       <h2 style={{ marginTop: 0 }}>{t('New check-in')}</h2>
-      <div className="muted small" style={{ marginBottom: 8 }}>{t('Stand in the same light, feet together, arms relaxed. A tape in the photo teaches a better number.')}</div>
-      <TextArea rows={2} value={note} placeholder={t('Optional — waist 84 cm this morning')} onChange={e => setNote(e.target.value)} />
+      <div className="muted small" style={{ marginBottom: 8 }}>{t('A photo is enough. The teacher guesses the tape numbers. You can fix any of them before saving.')}</div>
+      <TextArea rows={2} value={note} placeholder={t('Optional — 180 cm, or my waist was 84')} onChange={e => setNote(e.target.value)} />
       <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <Button size="sm" icon="camera" onClick={() => fileRef.current?.click()}>{photo ? t('Photo added') : t('Progress photo')}</Button>
         <input ref={fileRef} type="file" accept="image/*" capture="user" hidden onChange={onPhoto} />
         {photo && <img alt="" src={photo} style={{ width: 44, height: 56, objectFit: 'cover', borderRadius: 10 }} />}
       </div>
       <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-        <Button variant="primary" icon="sparkles" disabled={busy} onClick={() => teach()}>{busy ? t('Teaching…') : t('Teach from photo')}</Button>
+        <Button variant="primary" icon="sparkles" disabled={busy} onClick={() => teach()}>{busy ? t('Guessing…') : t('Guess from photo')}</Button>
         <Button size="sm" onClick={() => setDraft({ ...blank(note.trim()), photo })}>{t('Enter the tape')}</Button>
       </div>
     </div>
 
     {draft && <div className="card">
-      <h2 style={{ marginTop: 0 }}>{t('Review before saving')}</h2>
+      <h2 style={{ marginTop: 0 }}>{t('Guessed measurements')}</h2>
       {draft.photo && <img alt="" src={draft.photo} style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 12 }} />}
+      <div className="muted small" style={{ margin: '8px 0' }}>{t('Visual guess, not a tape. Correct anything that looks wrong.')}</div>
       {draft.lesson && <p style={{ marginBottom: 8 }}>{draft.lesson}</p>}
       {!!draft.steps?.length && <ol className="small" style={{ marginTop: 0 }}>
         {draft.steps.map(step => <li key={step}>{step}</li>)}
