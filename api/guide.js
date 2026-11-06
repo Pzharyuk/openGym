@@ -266,6 +266,24 @@ const posterJobs = new Map()
 async function imagineStill(prompt, image) {
   const apiKey = process.env.XAI_API_KEY || ''
   if (!apiKey) return { error: 'Previews are unavailable right now.' }
+  if (!image) {
+    const res = await postJSON('https://api.x.ai/v1/images/generations', apiKey, {
+      model: 'grok-imagine-image-2.0',
+      prompt,
+      aspect_ratio: '3:4',
+      resolution: '1k'
+    }, 60000)
+    const got = res.ok ? imageBytes(res.json) : null
+    if (Buffer.isBuffer(got) && got.length > 1000) return { buf: got }
+    if (typeof got === 'string') {
+      const file = await fetch(got, { signal: AbortSignal.timeout(20000) })
+      if (file.ok) {
+        const buf = Buffer.from(await file.arrayBuffer())
+        if (buf.length > 1000) return { buf }
+      }
+    }
+    return { error: apiError(res.json, 'Could not make the card.') }
+  }
   const edited = {
     model: 'grok-imagine-image-2.0',
     prompt,
@@ -295,6 +313,18 @@ async function imagineStill(prompt, image) {
   if (!file.ok) return { error: 'Could not save the preview.' }
   const buf = Buffer.from(await file.arrayBuffer())
   return buf.length > 1000 ? { buf } : { error: 'Could not make the preview.' }
+}
+
+async function renderCard(body) {
+  const name = clip(body?.name, 80)
+  if (!name) return { status: 400, error: 'Name the exercise first.' }
+  const equipment = clip(body?.equipment, 40) || ''
+  const image = typeof body?.imageDataUrl === 'string' && body.imageDataUrl.length <= 700000 && /^data:image\/(jpeg|jpg|png|webp);/i.test(body.imageDataUrl)
+    ? body.imageDataUrl
+    : ''
+  const still = await imagineStill(POSTER_PROMPT + ' Exercise: ' + (equipment ? equipment + ' ' : '') + name + '.', image)
+  if (still.error || !still.buf) return { status: 502, error: still.error || 'Could not make the card.' }
+  return { status: 200, dataUrl: 'data:image/jpeg;base64,' + still.buf.toString('base64') }
 }
 
 async function professionalPoster(dataDir, body) {
@@ -405,6 +435,14 @@ export function guideRoutes({ json, readBody, readSession, dataDir }) {
       if (!fs.existsSync(file)) return json(res, 404, { error: 'not found' })
       res.writeHead(200, { 'Content-Type': 'video/mp4', 'Cache-Control': 'private, max-age=86400' })
       fs.createReadStream(file).pipe(res)
+    },
+    'POST /api/guide/card': async (req, res) => {
+      const user = readSession(req)
+      if (!user) return json(res, 401, { error: 'not signed in' })
+      if (limited(user.id, 40)) return json(res, 429, { error: 'Too many cards. Try again in a little while.' })
+      const result = await renderCard(await readBody(req))
+      if (result.dataUrl) return json(res, 200, { ok: true, dataUrl: result.dataUrl })
+      json(res, result.status, { error: result.error })
     },
     'GET /api/guide/poster': async (req, res) => {
       const user = readSession(req)

@@ -10,6 +10,7 @@ import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { tappable } from '../lib/use-sheet-keyboard.js'
 import { glyphOf } from '../lib/glyphs.js'
+import { CoverMark } from '../components/CustomMedia.jsx'
 import { todayFuelSummary } from '../lib/fuel.js'
 import { latestSite, loadMeasure } from '../lib/measure.js'
 import { guideSheet } from '../components/GuideSheet.jsx'
@@ -88,10 +89,12 @@ export default function Home() {
           row keeps working, so a second session in one day is a tap away, just not urged. */}
       <div className="today-row" {...tappable(onToday)}>
         <div className="row" style={{ gap: 9, minWidth: 0 }}>
-          <span className="lrow-i" style={{ background: S.active ? 'var(--orange)' : doneToday ? 'var(--surface-3)' : routine ? 'var(--acc)' : 'var(--surface-3)' }}>
+          {routine?.cover && !S.active && !doneToday
+            ? <CoverMark file={routine.cover} emoji={routine.emoji} />
+            : <span className="lrow-i" style={{ background: S.active ? 'var(--orange)' : doneToday ? 'var(--surface-3)' : routine ? 'var(--acc)' : 'var(--surface-3)' }}>
             <Icon name={S.active ? (editingSaved ? 'pencil' : 'timer') : doneToday ? 'checkCircle' : routine ? glyphOf(routine.emoji) : 'moon'}
               style={doneToday && !S.active ? { color: 'var(--green)' } : undefined} />
-          </span>
+          </span>}
           <div style={{ minWidth: 0 }}>
             <div className="lbl2">{t('Today')}</div>
             <div className="ttl">{S.active ? (editingSaved ? S.active.name : t('{0} — in progress', S.active.name))

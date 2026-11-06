@@ -9,6 +9,7 @@ import SwipeToDelete from '../components/SwipeToDelete.jsx'
 import { deleteRoutine } from '../lib/routines.js'
 import { tappable } from '../lib/use-sheet-keyboard.js'
 import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
+import { CoverMark } from '../components/CustomMedia.jsx'
 import { DEMO } from '../lib/demo.js'
 import { MOBILE } from '../lib/mobile.js'
 import { coachAvailable } from '../lib/coach.js'
@@ -94,7 +95,7 @@ export default function Plan() {
               </div>
             </div>
             {dayRoutines.map(r => <div key={r.id} className="row" style={{ gap: 8, padding: '4px 0 4px 8px' }}>
-              <span className="lrow-i" style={{ width: 26, height: 26, fontSize: 14 }}><Icon name={glyphOf(r.emoji)} /></span>
+              <CoverMark file={r.cover} emoji={r.emoji} size={26} />
               <div className="grow" style={{ minWidth: 0 }}><div className="tt" style={{ fontSize: 14 }}>{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
               <button className="iconbtn sm" aria-label={t('Remove')} onClick={() => removeFromDay(d, r.id)}><Icon name="xmark" /></button>
             </div>)}
@@ -108,7 +109,7 @@ export default function Plan() {
       </div>
       {S.routines.length ? <div className="list">{S.routines.map((r, i) => <SwipeToDelete key={r.id} className="item"
         deleteLabel={t('Delete routine')} onDelete={() => confirmDelete(r)} {...tappable(() => nav('/plan/r/' + r.id))}>
-        <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
+        <CoverMark file={r.cover} emoji={r.emoji} />
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
         {/* The order of this list is the order of `S.routines`, and every other screen reads the
             same array — the Start screen, the day-assignment sheets, the routine pickers. So

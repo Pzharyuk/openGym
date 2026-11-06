@@ -183,6 +183,7 @@ function GuideForm({ close }) {
     setBusy('save')
     try {
       const created = []
+      let cover = null
       for (const move of workout.moves) {
         const id = 'c' + uid()
         const exercise = {
@@ -201,6 +202,14 @@ function GuideForm({ close }) {
           } catch { /* the clip can still be opened from its link */ }
         }
         if (!exercise.media && move.videoUrl) exercise.url = move.videoUrl
+        try {
+          const shot = await exerciseCard(move, frames[0], config)
+          if (shot) {
+            if (exercise.media?.kind === 'video') exercise.media = { ...exercise.media, poster: shot.poster }
+            else exercise.media = shot.media
+            if (!cover) cover = shot.media
+          }
+        } catch { /* the workout still saves if a card fails */ }
         created.push({ exercise, cfg: repsConfig(id, move) })
       }
       const rid = 'r' + uid()
@@ -210,6 +219,7 @@ function GuideForm({ close }) {
           id: rid,
           name: workout.name || t('New workout'),
           emoji: DEFAULT_GLYPH,
+          cover: cover || undefined,
           ex: created.map(row => row.cfg)
         })
       })
@@ -248,13 +258,30 @@ function GuideForm({ close }) {
         <Button size="sm" variant="ghost" disabled={rendering >= 0} onClick={() => guide(index)}>{move.videoUrl || move.videoData ? t('Redo guide') : t('Form guide')}</Button>
       </div>)}
       <div style={{ height: 12 }} />
-      <Button variant="primary" disabled={!!busy || rendering >= 0} onClick={start}>{busy === 'save' ? t('Adding…') : t('Add and start')}</Button>
+      <Button variant="primary" disabled={!!busy || rendering >= 0} onClick={start}>{busy === 'save' ? t('Making the card…') : t('Add and start')}</Button>
       <div style={{ height: 8 }} />
       <Button variant="ghost" onClick={() => setWorkout(null)}>{t('Use a different photo')}</Button>
     </>}
     <div style={{ height: 8 }} />
     <button className="btn ghost dim" onClick={close}><Icon name="xmark" /> {t('Close')}</button>
   </>
+}
+
+function exerciseCard(move, image, config) {
+  return api('/api/guide/card', {
+    method: 'POST',
+    timeout: 70000,
+    body: JSON.stringify({ name: move.name, equipment: move.equipment, imageDataUrl: image || undefined })
+  }).then(async result => {
+    const bin = Uint8Array.from(atob((result.dataUrl || '').split(',')[1] || ''), c => c.charCodeAt(0))
+    if (bin.length < 1000) return null
+    const file = new File([bin], 'card.jpg', { type: 'image/jpeg' })
+    const { ingestMediaFile } = await import('../lib/media-ingest.js')
+    const out = await ingestMediaFile(file, limitsFrom(config))
+    for (const blob of out.blobs) await mediaStore.put(blob.hash, blob.blob, { mime: blob.mime, pending: true })
+    const poster = out.media.poster || { hash: out.media.hash, mime: out.media.mime, size: out.media.size, width: out.media.width, height: out.media.height }
+    return { media: out.media, poster }
+  })
 }
 
 export function guideSheet() {
