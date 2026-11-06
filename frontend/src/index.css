@@ -567,6 +567,10 @@ body.chips-dragging *{cursor:inherit}
 }
 .field::placeholder,.input::placeholder{color:var(--label-3)}
 .field:focus,.input:focus{box-shadow:inset 0 0 0 2px var(--acc)}
+input.num{
+  background:var(--surface-2);color:var(--label);border:none;border-radius:8px;
+  padding:4px 6px;
+}
 .field.area,textarea.input{min-height:92px;resize:vertical;line-height:1.42}
 .exnote{
   background:var(--surface);border-radius:var(--r);padding:13px 15px;

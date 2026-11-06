@@ -130,13 +130,37 @@ export function sanitizeDoc(raw) {
   if (water.length > MAX_WATER) water.length = MAX_WATER
 
   const targetRaw = raw?.target && typeof raw.target === 'object' ? raw.target : {}
+  const sex = targetRaw.sex === 'm' || targetRaw.sex === 'f' ? targetRaw.sex : ''
   const target = {
     kcal: Math.max(500, num(targetRaw.kcal ?? 2200, 8000, 0) || 2200),
     protein: num(targetRaw.protein ?? 150, 400, 0) || 0,
-    t: num(targetRaw.t, 1e15, 0)
+    t: num(targetRaw.t, 1e15, 0),
+    heightCm: num(targetRaw.heightCm, 250),
+    lossLb: num(targetRaw.lossLb, 200),
+    age: num(targetRaw.age, 100, 0),
+    sex,
+    locked: targetRaw.locked === true
   }
   if (target.kcal < 500) target.kcal = 2200
   return { meals: kept, water, tombs, target }
+}
+
+export function caloriePlan({ kg, heightCm, lossLb = 0, age = 0, sex = '' }) {
+  const weight = Number(kg)
+  const height = Number(heightCm)
+  if (!(weight >= 35 && weight <= 250) || !(height >= 120 && height <= 230)) return null
+  const years = age >= 15 && age <= 90 ? age : 30
+  const base = 10 * weight + 6.25 * height - 5 * years
+  const bmr = sex === 'm' ? base + 5 : sex === 'f' ? base - 161 : base - 78
+  const tdee = bmr * 1.55
+  const lose = Math.max(0, Number(lossLb) || 0)
+  const weekly = lose === 0 ? 0 : lose < 8 ? 0.5 : lose < 20 ? 0.75 : 1
+  const floor = sex === 'f' ? 1200 : sex === 'm' ? 1500 : 1400
+  let kcal = Math.round((tdee - weekly * 500) / 10) * 10
+  if (kcal < floor) kcal = floor
+  if (kcal > 4500) kcal = 4500
+  const protein = Math.round(weight * (lose > 0 ? 1.8 : 1.6))
+  return { kcal, protein, tdee: Math.round(tdee), weekly, floor }
 }
 
 export function mergeFuel(a, b) {

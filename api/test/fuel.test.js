@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { mergeFuel, parseEstimate, healthScore, readFuel, writeFuel } from '../fuel.js'
+import { mergeFuel, parseEstimate, healthScore, readFuel, writeFuel, caloriePlan } from '../fuel.js'
 
 test('a delete tombstone drops the older copy and a newer edit wins', () => {
   const server = { meals: [{ id: 'a', day: '2026-11-05', t: 10, name: 'Bowl', kcal: 500, protein: 30, carbs: 40, fat: 12, items: [] }] }
@@ -35,6 +35,16 @@ test('parseEstimate sums a fenced model reply and drops junk', () => {
   assert.equal(estimate.items[0].fiber, 0)
   assert.equal(typeof estimate.items[0].score, 'number')
   assert.equal(parseEstimate('no json here'), null)
+})
+
+test('calorie plan uses height, weight, and pounds to lose, and stays above the floor', () => {
+  const keep = caloriePlan({ kg: 81.6, heightCm: 178, lossLb: 0, sex: 'm', age: 30 })
+  const cut = caloriePlan({ kg: 81.6, heightCm: 178, lossLb: 15, sex: 'm', age: 30 })
+  assert.ok(keep.kcal > cut.kcal)
+  assert.equal(cut.weekly, 0.75)
+  assert.ok(cut.kcal >= 1500)
+  assert.ok(cut.protein > keep.protein)
+  assert.equal(caloriePlan({ kg: 40, heightCm: 100 }), null)
 })
 
 test('health score favors protein and fiber over sugar and sodium', () => {

@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { fmtDate, todayISO, uid } from '../lib/format.js'
+import { fmtDate, fmtNum, todayISO, uid } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
 import { api } from '../lib/api.js'
 import {
-  WATER_GLASSES, commitFuel, foodStreak, healthScore, loadFuel, prevDay, pullFuel, resizePhoto
+  WATER_GLASSES, caloriePlan, commitFuel, foodStreak, healthScore, loadFuel, prevDay, pullFuel, resizePhoto
 } from '../lib/fuel.js'
+import { lastBW } from '../lib/history.js'
 import Icon from '../components/Icon.jsx'
 import { Button, NumberField, TextArea, TextField } from '../components/ui.jsx'
 
@@ -99,6 +100,8 @@ export default function Fuel() {
   const nav = useNavigate()
   const toast = useUI(s => s.toast)
   const user = useStore(s => s.user)
+  const body = useStore(s => s.S)
+  const unit = body.unit === 'lb' ? 'lb' : 'kg'
   const uid_ = user?.id || null
   const [day, setDay] = useState(todayISO())
   const [doc, setDoc] = useState(() => loadFuel(uid_))
@@ -132,7 +135,21 @@ export default function Fuel() {
   }
 
   const setTarget = (key, value) => {
-    change(d => ({ ...d, target: { ...d.target, [key]: value, t: Date.now() } }))
+    change(d => ({ ...d, target: { ...d.target, [key]: value, locked: key === 'kcal' || key === 'protein' ? true : d.target.locked, t: Date.now() } }))
+  }
+
+  const writePlan = (patch) => {
+    const bw = lastBW(body)
+    const kg = bw ? (unit === 'lb' ? bw.w / 2.2046226218 : bw.w) : 0
+    change(d => {
+      const next = { ...d.target, ...patch, t: Date.now() }
+      const got = caloriePlan({ kg, heightCm: next.heightCm, lossLb: next.lossLb, age: next.age, sex: next.sex })
+      if (got && !next.locked) {
+        next.kcal = got.kcal
+        next.protein = got.protein
+      }
+      return { ...d, target: next }
+    })
   }
 
   const onPhoto = async e => {
@@ -262,6 +279,23 @@ export default function Fuel() {
         <span className="small">{t(streak === 1 ? '{0} day logged' : '{0} days logged', streak)}</span>
       </div>
       <div className="row" style={{ gap: 10, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <label className="small muted">{unit === 'lb' ? t('Height in') : t('Height cm')}
+          <NumberField aria-label={t('Height')} value={heightField(doc.target.heightCm, unit)} decimal={false} onChange={n => writePlan({ heightCm: n ? (unit === 'lb' ? n * 2.54 : n) : 0, locked: false })} style={{ width: 64, marginInlineStart: 6 }} />
+        </label>
+        <label className="small muted">{unit === 'lb' ? t('Lose lb') : t('Lose kg')}
+          <NumberField aria-label={t('Weight to lose')} value={lossField(doc.target.lossLb, unit)} decimal={false} onChange={n => writePlan({ lossLb: n ? (unit === 'lb' ? n : n * 2.2046226218) : 0, locked: false })} style={{ width: 56, marginInlineStart: 6 }} />
+        </label>
+        <label className="small muted">{t('Age')}
+          <NumberField aria-label={t('Age')} value={doc.target.age || 0} decimal={false} onChange={n => writePlan({ age: n || 0, locked: false })} style={{ width: 52, marginInlineStart: 6 }} />
+        </label>
+      </div>
+      <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+        {[['', 'Average'], ['m', 'Male'], ['f', 'Female']].map(([id, label]) =>
+          <button key={id || 'avg'} type="button" className={'tag' + (doc.target.sex === id ? ' acc' : '')} onClick={() => writePlan({ sex: id, locked: false })}>{t(label)}</button>
+        )}
+      </div>
+      <div className="small muted" style={{ marginTop: 8 }}>{planLine(body, unit, doc.target)}</div>
+      <div className="row" style={{ gap: 10, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <label className="small muted">{t('Target')}
           <NumberField aria-label={t('Calorie target')} value={doc.target.kcal} decimal={false} onChange={n => setTarget('kcal', Math.max(500, n || 0))} style={{ width: 72, marginInlineStart: 6 }} />
         </label>
@@ -269,6 +303,7 @@ export default function Fuel() {
           <NumberField aria-label={t('Protein target')} value={doc.target.protein} decimal={false} onChange={n => setTarget('protein', n || 0)} style={{ width: 56, marginInlineStart: 6 }} />
           <span> g</span>
         </label>
+        {doc.target.locked && <Button size="sm" variant="ghost" onClick={() => writePlan({ locked: false })}>{t('Recalculate')}</Button>}
       </div>
     </div>
 
@@ -356,6 +391,29 @@ export default function Fuel() {
       </div>)}
     </div>
   </div>
+}
+
+function heightField(cm, unit) {
+  if (!cm) return 0
+  return unit === 'lb' ? Math.round(cm / 2.54) : Math.round(cm)
+}
+
+function lossField(lb, unit) {
+  if (!lb) return 0
+  return unit === 'lb' ? Math.round(lb) : Math.round(lb / 2.2046226218)
+}
+
+function planLine(body, unit, target) {
+  const bw = lastBW(body)
+  if (!bw) return t('Log a weigh-in and the target can use your weight.')
+  const kg = unit === 'lb' ? bw.w / 2.2046226218 : bw.w
+  const plan = caloriePlan({ kg, heightCm: target.heightCm, lossLb: target.lossLb, age: target.age, sex: target.sex })
+  const weight = t('Using {0} {1} from your last weigh-in.', fmtNum(bw.w), unit)
+  if (!plan) return weight + ' ' + t('Add a height to set the calories.')
+  if (target.locked) return weight + ' ' + t('Target is edited by hand.')
+  if (!plan.weekly) return weight + ' ' + t('Maintenance is {0} kcal. Protein {1} g.', plan.kcal, plan.protein)
+  const pace = unit === 'lb' ? plan.weekly : Math.round(plan.weekly / 2.2046226218 * 10) / 10
+  return weight + ' ' + t('About {0} {1} a week, held at or above {2} kcal.', pace, unit, plan.floor)
 }
 
 function nextDay(iso) {
