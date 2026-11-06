@@ -2348,7 +2348,7 @@ const routes = {
   /* ---------- Fuel (calories). Own file, never the workout document. ---------- */
   ...fuelRoutes({ json, readBody, readSession, dataDir: DATA }),
   ...measureRoutes({ json, readBody, readSession, dataDir: DATA }),
-  ...guideRoutes({ json, readBody, readSession }),
+  ...guideRoutes({ json, readBody, readSession, dataDir: DATA }),
 
   /* ---------- photos & videos ---------- */
   // Absent, not refusing, when MEDIA_UPLOADS=0: a 404 is what a server from before the feature

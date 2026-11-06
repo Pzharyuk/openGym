@@ -163,7 +163,7 @@ function GuideForm({ close }) {
           name: move.name,
           equipment: move.equipment,
           cues: move.cues,
-          imageDataUrl: source.moves.length === 1 ? frames[0] : undefined
+          imageDataUrl: frames[0] || undefined
         })
       })
       setWorkout(current => {

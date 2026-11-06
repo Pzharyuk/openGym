@@ -1,6 +1,8 @@
 /* A photo or short clip becomes a workout, then an Imagine clip of the movement.
-   The clip is returned so the phone can store it as the exercise's own video.
+   Catalog exercises use the same image-to-video path: the still becomes a short guide.
    AGPL-3.0-or-later, same terms as the rest of openGym. */
+import fs from 'node:fs'
+import path from 'node:path'
 
 const PARTS = ['back', 'cardio', 'chest', 'lower arms', 'lower legs', 'neck', 'shoulders', 'upper arms', 'upper legs', 'waist']
 const GEAR = ['assisted', 'band', 'barbell', 'body weight', 'cable', 'dumbbell', 'ez barbell', 'kettlebell', 'leverage machine', 'resistance band', 'smith machine', 'weighted']
@@ -131,29 +133,33 @@ async function analyze(body) {
 function promptFor(move, fromStill) {
   const motion = (move.cues || []).filter(Boolean).join(', then ')
   const action = `one fluid repetition of the ${move.equipment} ${move.name}${motion ? '. The body moves through it in order: ' + motion : ''}.`
-  const frame = 'One single continuous video from one camera. The athlete fills the frame from head to feet or the working muscles. No collage, no storyboard, no comic strip, no stacked stills, no grid, no split screen, no repeated panels of the same pose, no borders, no letterboxing, no titles, no captions, no logos, no cuts, no extra people.'
-  if (fromStill) return `Animate the person in this still into ${action} Keep their identity and the gym. ${frame}`
+  const frame = 'One single continuous video from one camera. No collage, no storyboard, no comic strip, no stacked stills, no grid, no split screen, no repeated panels, no borders, no letterboxing, no titles, no captions, no logos, no cuts, no extra people.'
+  if (fromStill) return `The attached photo is the first frame. Keep this person, this gym, and this framing, and animate them through ${action} Do not replace the person or redraw the scene. ${frame}`
   return `Bright gym, side view. One athletic adult in plain workout clothes performs ${action} ${frame}`
 }
 
-async function renderVideo(body) {
-  const name = clip(body?.name, 80)
-  if (!name) return { status: 400, error: 'Name the exercise first.' }
-  const apiKey = process.env.XAI_API_KEY || ''
-  if (!apiKey) return { status: 503, error: 'Workout guides are unavailable right now.' }
-  const image = typeof body?.imageDataUrl === 'string' && body.imageDataUrl.length <= 500000 && /^data:image\/(jpeg|jpg|png|webp);/i.test(body.imageDataUrl)
-    ? body.imageDataUrl
-    : ''
-  const move = { name, equipment: clip(body?.equipment, 40), cues: Array.isArray(body?.cues) ? body.cues.map(c => clip(c, 80)).filter(Boolean).slice(0, 3) : [] }
-  const base = { model: 'grok-imagine-video-1.5-lite', duration: 6, resolution: '720p', aspect_ratio: '9:16', generate_audio: false }
-  const withStill = image ? { ...base, prompt: promptFor(move, true), image: { url: image } } : null
-  const textOnly = { ...base, prompt: promptFor(move, false) }
-  let started = await postJSON('https://api.x.ai/v1/videos/generations', apiKey, withStill || textOnly, 30000)
-  if (!started.ok && withStill) started = await postJSON('https://api.x.ai/v1/videos/generations', apiKey, textOnly, 30000)
-  const id = started.json && (started.json.request_id || started.json.id)
-  if (!started.ok || !id) return { status: 502, error: 'Could not start the form guide.' }
+const GUIDE_ID = /^[0-9A-Za-z_-]{1,64}$/
 
-  const deadline = Date.now() + 70000
+function guidePath(dataDir, id) {
+  return path.join(dataDir, 'guides', id + '.mp4')
+}
+
+async function imagineClip(move, image) {
+  const apiKey = process.env.XAI_API_KEY || ''
+  if (!apiKey) return { error: 'Workout guides are unavailable right now.' }
+  const body = {
+    model: 'grok-imagine-video-1.5',
+    duration: 6,
+    resolution: '720p',
+    generate_audio: false,
+    prompt: promptFor(move, !!image)
+  }
+  if (image) body.image = { url: image }
+  let started = await postJSON('https://api.x.ai/v1/videos/generations', apiKey, body, 30000)
+  const id = started.json && (started.json.request_id || started.json.id)
+  if (!started.ok || !id) return { error: 'Could not start the form guide.' }
+
+  const deadline = Date.now() + 90000
   let videoUrl = ''
   while (Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, 2500))
@@ -165,18 +171,60 @@ async function renderVideo(body) {
     const status = json && json.status
     videoUrl = json?.video?.url || json?.video_url || ''
     if (status === 'done' && videoUrl) break
-    if (status === 'failed' || status === 'expired') return { status: 502, error: 'The form guide failed. You can still add the exercise.' }
+    if (status === 'failed' || status === 'expired') return { error: 'The form guide failed. You can still add the exercise.' }
   }
-  if (!videoUrl) return { status: 502, error: 'The guide is still rendering. Try again.' }
-
+  if (!videoUrl) return { error: 'The guide is still rendering. Try again.' }
   const file = await fetch(videoUrl, { signal: AbortSignal.timeout(30000) })
-  if (!file.ok) return { status: 200, url: videoUrl }
+  if (!file.ok) return { url: videoUrl }
   const buf = Buffer.from(await file.arrayBuffer())
-  if (buf.length < 1000 || buf.length > 4500000) return { status: 200, url: videoUrl }
-  return { status: 200, url: videoUrl, dataUrl: 'data:video/mp4;base64,' + buf.toString('base64') }
+  if (buf.length < 1000 || buf.length > 8000000) return { url: videoUrl }
+  return { url: videoUrl, buf }
 }
 
-export function guideRoutes({ json, readBody, readSession }) {
+async function renderVideo(body) {
+  const name = clip(body?.name, 80)
+  if (!name) return { status: 400, error: 'Name the exercise first.' }
+  const image = typeof body?.imageDataUrl === 'string' && body.imageDataUrl.length <= 700000 && /^data:image\/(jpeg|jpg|png|webp);/i.test(body.imageDataUrl)
+    ? body.imageDataUrl
+    : ''
+  const move = { name, equipment: clip(body?.equipment, 40) || 'body weight', cues: Array.isArray(body?.cues) ? body.cues.map(c => clip(c, 80)).filter(Boolean).slice(0, 3) : [] }
+  try {
+    const clipOut = await imagineClip(move, image)
+    if (clipOut.error) return { status: 502, error: clipOut.error }
+    if (!clipOut.buf) return { status: 200, url: clipOut.url }
+    return { status: 200, url: clipOut.url, dataUrl: 'data:video/mp4;base64,' + clipOut.buf.toString('base64') }
+  } catch {
+    return { status: 502, error: 'The form guide failed. You can still add the exercise.' }
+  }
+}
+
+async function catalogVideo(dataDir, body) {
+  const id = clip(body?.id, 64)
+  if (!GUIDE_ID.test(id)) return { status: 400, error: 'Unknown exercise.' }
+  const file = guidePath(dataDir, id)
+  const url = '/api/guide/clip?id=' + encodeURIComponent(id)
+  try {
+    if (fs.existsSync(file) && fs.statSync(file).size > 1000) return { status: 200, url }
+  } catch { /* generate it */ }
+  const image = typeof body?.imageDataUrl === 'string' && body.imageDataUrl.length <= 700000 && /^data:image\/(jpeg|jpg|png|webp);/i.test(body.imageDataUrl)
+    ? body.imageDataUrl
+    : ''
+  if (!image) return { status: 400, error: 'Need the exercise photo.' }
+  const move = { name: clip(body?.name, 80) || 'the exercise', equipment: clip(body?.equipment, 40) || 'body weight', cues: [] }
+  try {
+    const clipOut = await imagineClip(move, image)
+    if (clipOut.error || !clipOut.buf) return { status: 502, error: clipOut.error || 'Could not store the guide.' }
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    const tmp = file + '.part'
+    fs.writeFileSync(tmp, clipOut.buf)
+    fs.renameSync(tmp, file)
+    return { status: 200, url }
+  } catch {
+    return { status: 502, error: 'The form guide failed.' }
+  }
+}
+
+export function guideRoutes({ json, readBody, readSession, dataDir }) {
   return {
     'POST /api/guide/analyze': async (req, res) => {
       const user = readSession(req)
@@ -193,6 +241,33 @@ export function guideRoutes({ json, readBody, readSession }) {
       const result = await renderVideo(await readBody(req))
       if (result.url || result.dataUrl) return json(res, 200, { ok: true, url: result.url, dataUrl: result.dataUrl })
       json(res, result.status, { error: result.error })
+    },
+    'GET /api/guide/catalog': async (req, res) => {
+      const user = readSession(req)
+      if (!user) return json(res, 401, { error: 'not signed in' })
+      const id = new URL(req.url, 'http://x').searchParams.get('id') || ''
+      if (!GUIDE_ID.test(id)) return json(res, 404, { error: 'not found' })
+      const file = guidePath(dataDir, id)
+      if (!fs.existsSync(file)) return json(res, 404, { error: 'not found' })
+      json(res, 200, { ok: true, url: '/api/guide/clip?id=' + encodeURIComponent(id) })
+    },
+    'POST /api/guide/catalog': async (req, res) => {
+      const user = readSession(req)
+      if (!user) return json(res, 401, { error: 'not signed in' })
+      if (limited(user.id, 40)) return json(res, 429, { error: 'Too many guides. Try again in a little while.' })
+      const result = await catalogVideo(dataDir, await readBody(req))
+      if (result.url) return json(res, 200, { ok: true, url: result.url })
+      json(res, result.status, { error: result.error })
+    },
+    'GET /api/guide/clip': async (req, res) => {
+      const user = readSession(req)
+      if (!user) return json(res, 401, { error: 'not signed in' })
+      const id = new URL(req.url, 'http://x').searchParams.get('id') || ''
+      if (!GUIDE_ID.test(id)) return json(res, 404, { error: 'not found' })
+      const file = guidePath(dataDir, id)
+      if (!fs.existsSync(file)) return json(res, 404, { error: 'not found' })
+      res.writeHead(200, { 'Content-Type': 'video/mp4', 'Cache-Control': 'private, max-age=86400' })
+      fs.createReadStream(file).pipe(res)
     }
   }
 }
