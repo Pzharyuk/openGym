@@ -239,19 +239,108 @@ async function catalogVideo(dataDir, body) {
   }
 }
 
+function posterPath(dataDir, id) {
+  return path.join(dataDir, 'guides', id + '.jpg')
+}
+
+function posterUrl(id) {
+  return '/api/guide/photo?id=' + encodeURIComponent(id)
+}
+
+function imageBytes(json) {
+  const rows = Array.isArray(json?.data) ? json.data : [json]
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue
+    const b64 = row.b64_json || row.b64
+    if (typeof b64 === 'string' && b64.length > 100) return Buffer.from(b64, 'base64')
+    const url = row.url || row.image_url
+    if (typeof url === 'string' && /^https?:\/\//.test(url)) return url
+  }
+  return null
+}
+
+const POSTER_PROMPT = 'Professional fitness photograph of this exact exercise and body position. Clean modern gym, soft daylight, sharp focus, one athletic adult in plain dark training clothes, realistic, the working muscles easy to see. Fill the frame. No text, no watermark, no logo, no collage, no extra people.'
+
+const posterJobs = new Map()
+
+async function imagineStill(prompt, image) {
+  const apiKey = process.env.XAI_API_KEY || ''
+  if (!apiKey) return { error: 'Previews are unavailable right now.' }
+  const edited = {
+    model: 'grok-imagine-image-2.0',
+    prompt,
+    aspect_ratio: '3:4',
+    resolution: '1k',
+    response_format: 'b64_json',
+    image: { url: image, type: 'image_url' }
+  }
+  let res = await postJSON('https://api.x.ai/v1/images/edits', apiKey, edited, 60000)
+  if (!res.ok) {
+    const again = { ...edited }
+    delete again.response_format
+    res = await postJSON('https://api.x.ai/v1/images/edits', apiKey, again, 60000)
+  }
+  if (!res.ok) {
+    res = await postJSON('https://api.x.ai/v1/images/generations', apiKey, {
+      model: 'grok-imagine-image-2.0',
+      prompt,
+      aspect_ratio: '3:4',
+      resolution: '1k'
+    }, 60000)
+  }
+  const got = res.ok ? imageBytes(res.json) : null
+  if (!got) return { error: apiError(res.json, 'Could not make the preview.') }
+  if (Buffer.isBuffer(got)) return got.length > 1000 ? { buf: got } : { error: 'Could not make the preview.' }
+  const file = await fetch(got, { signal: AbortSignal.timeout(20000) })
+  if (!file.ok) return { error: 'Could not save the preview.' }
+  const buf = Buffer.from(await file.arrayBuffer())
+  return buf.length > 1000 ? { buf } : { error: 'Could not make the preview.' }
+}
+
+async function professionalPoster(dataDir, body) {
+  const id = clip(body?.id, 64)
+  if (!GUIDE_ID.test(id)) return { status: 400, error: 'Unknown exercise.' }
+  const file = posterPath(dataDir, id)
+  try {
+    if (fs.statSync(file).size > 1000) return { status: 200, url: posterUrl(id) }
+  } catch { /* make it */ }
+  const image = typeof body?.imageDataUrl === 'string' && body.imageDataUrl.length <= 700000 && /^data:image\/(jpeg|jpg|png|webp);/i.test(body.imageDataUrl)
+    ? body.imageDataUrl
+    : ''
+  if (!image) return { status: 400, error: 'Need the exercise photo.' }
+  if (posterJobs.has(id)) return posterJobs.get(id)
+  const job = (async () => {
+    const name = clip(body?.name, 80) || 'the exercise'
+    const equipment = clip(body?.equipment, 40) || 'body weight'
+    const still = await imagineStill(POSTER_PROMPT + ' Exercise: ' + equipment + ' ' + name + '.', image)
+    if (still.error || !still.buf) return { status: 502, error: still.error || 'Could not make the preview.' }
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    const tmp = file + '.part'
+    fs.writeFileSync(tmp, still.buf)
+    fs.renameSync(tmp, file)
+    return { status: 200, url: posterUrl(id), imageDataUrl: 'data:image/jpeg;base64,' + still.buf.toString('base64') }
+  })()
+  posterJobs.set(id, job)
+  try { return await job } finally { posterJobs.delete(id) }
+}
+
 export function premakeStarter(dataDir) {
   if (!process.env.XAI_API_KEY) return
   const media = process.env.CATALOG_MEDIA || '/catalog-media/img'
-  const pending = STARTER_GUIDES.filter(ex => {
-    try { return fs.statSync(guidePath(dataDir, ex.id)).size < 1000 } catch { return true }
-  })
-  if (!pending.length) return
-  console.log('premaking', pending.length, 'starter guides')
+  console.log('premaking', STARTER_GUIDES.length, 'starter previews')
   ;(async () => {
-    for (const ex of pending) {
+    for (const ex of STARTER_GUIDES) {
       try {
-        const file = path.join(media, ex.img)
-        const imageDataUrl = 'data:image/jpeg;base64,' + fs.readFileSync(file).toString('base64')
+        const stock = 'data:image/jpeg;base64,' + fs.readFileSync(path.join(media, ex.img)).toString('base64')
+        const hadPoster = fs.existsSync(posterPath(dataDir, ex.id))
+        const poster = await professionalPoster(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl: stock })
+        if (!hadPoster) {
+          try { fs.unlinkSync(guidePath(dataDir, ex.id)) } catch { /* the clip will be made from the new photo */ }
+        }
+        let videoReady = false
+        try { videoReady = fs.statSync(guidePath(dataDir, ex.id)).size > 1000 } catch { videoReady = false }
+        if (videoReady) { console.log('premake', ex.id, 'poster', poster.status); continue }
+        const imageDataUrl = poster.imageDataUrl || ('data:image/jpeg;base64,' + fs.readFileSync(posterPath(dataDir, ex.id)).toString('base64'))
         const result = await catalogVideo(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl })
         console.log('premake', ex.id, result.status, result.error || 'ok')
       } catch (e) {
@@ -305,6 +394,31 @@ export function guideRoutes({ json, readBody, readSession, dataDir }) {
       const file = guidePath(dataDir, id)
       if (!fs.existsSync(file)) return json(res, 404, { error: 'not found' })
       res.writeHead(200, { 'Content-Type': 'video/mp4', 'Cache-Control': 'private, max-age=86400' })
+      fs.createReadStream(file).pipe(res)
+    },
+    'GET /api/guide/poster': async (req, res) => {
+      const user = readSession(req)
+      if (!user) return json(res, 401, { error: 'not signed in' })
+      const id = new URL(req.url, 'http://x').searchParams.get('id') || ''
+      if (!GUIDE_ID.test(id) || !fs.existsSync(posterPath(dataDir, id))) return json(res, 404, { error: 'not found' })
+      json(res, 200, { ok: true, url: posterUrl(id) })
+    },
+    'POST /api/guide/poster': async (req, res) => {
+      const user = readSession(req)
+      if (!user) return json(res, 401, { error: 'not signed in' })
+      if (limited(user.id, 40)) return json(res, 429, { error: 'Too many previews. Try again in a little while.' })
+      const result = await professionalPoster(dataDir, await readBody(req))
+      if (result.url) return json(res, 200, { ok: true, url: result.url })
+      json(res, result.status, { error: result.error })
+    },
+    'GET /api/guide/photo': async (req, res) => {
+      const user = readSession(req)
+      if (!user) return json(res, 401, { error: 'not signed in' })
+      const id = new URL(req.url, 'http://x').searchParams.get('id') || ''
+      if (!GUIDE_ID.test(id)) return json(res, 404, { error: 'not found' })
+      const file = posterPath(dataDir, id)
+      if (!fs.existsSync(file)) return json(res, 404, { error: 'not found' })
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=86400' })
       fs.createReadStream(file).pipe(res)
     }
   }

@@ -23,6 +23,7 @@ export default function Media(p) {
 function BuiltinMedia({ ex, id, compact, minimizable }) {
   const [playing, setPlaying] = useState(true)
   const [failed, setFailed] = useState(null)
+  const [poster, setPoster] = useState('')
   const [clipUrl, setClipUrl] = useState('')
   const [making, setMaking] = useState(false)
   const [guideError, setGuideError] = useState('')
@@ -39,6 +40,12 @@ function BuiltinMedia({ ex, id, compact, minimizable }) {
     return active.entries[cur]?.id === ex?.id
   })
   const mini = minimizable && gifSize === 'mini'
+  useEffect(() => {
+    if (!focused || !userId || !ex?.img || compact || mini || (minimizable && gifSize === 'off')) return
+    let gone = false
+    ensurePoster(ex).then(url => { if (!gone && url) setPoster(url) }).catch(() => {})
+    return () => { gone = true }
+  }, [focused, userId, ex?.id, ex?.img, compact, mini, minimizable, gifSize])
   useEffect(() => {
     if (!focused || !userId || !ex?.img || !ex?.gif || compact || mini || (minimizable && gifSize === 'off')) return
     let gone = false
@@ -67,9 +74,11 @@ function BuiltinMedia({ ex, id, compact, minimizable }) {
     setPlaying(p => !p)
   }
   return (
-    <div className={'exmedia' + (clipUrl ? ' guide' : '') + (compact ? ' compact' : '') + (mini ? ' mini' : '') + (failed === 'all' && !clipUrl ? ' broken' : '')} id={id} onClick={onTap}>
+    <div className={'exmedia' + (clipUrl ? ' guide' : poster ? ' poster' : '') + (compact ? ' compact' : '') + (mini ? ' mini' : '') + (failed === 'all' && !clipUrl ? ' broken' : '')} id={id} onClick={onTap}>
       {clipUrl
         ? <video ref={videoRef} src={clipUrl} autoPlay muted loop playsInline style={{ objectFit: 'cover' }} onError={() => { guideReady.delete(ex.id); setClipUrl(''); setGuideError(t('The video guide did not play.')) }} />
+        : poster
+        ? <img decoding="async" draggable={false} src={poster} alt={exerciseNameFor(ex)} />
         : failed === 'all'
         ? <div className="exmedia-x"><Icon name="dumbbell" /></div>
         : <img decoding="async" draggable={false} src={showGif ? gifSrc(ex) : imgSrc(ex)} alt={exerciseNameFor(ex)} onError={onError} />}
@@ -80,7 +89,7 @@ function BuiltinMedia({ ex, id, compact, minimizable }) {
       )}
       {making && !clipUrl && <span className="gifhint">{t('Making the video…')}</span>}
       {!!guideError && !clipUrl && !making && <button type="button" className="gifhint" onClick={e => { e.stopPropagation(); setAttempt(n => n + 1) }}>{t('Retry video')}</button>}
-      {!mini && !failed && !making && !clipUrl && !guideError && (
+      {!mini && !failed && !making && !clipUrl && !poster && !guideError && (
         <span className="gifhint">
           <Icon name={playing ? 'pause' : 'play'} />{playing ? t('tap to pause') : t('tap to play')}
         </span>
@@ -120,14 +129,39 @@ function stillData(src) {
   })
 }
 
+const posterReady = new Map()
+
+async function ensurePoster(ex) {
+  if (posterReady.has(ex.id)) return posterReady.get(ex.id)
+  try {
+    const had = await api('/api/guide/poster?id=' + encodeURIComponent(ex.id))
+    if (had?.url) { posterReady.set(ex.id, had.url); return had.url }
+  } catch (e) {
+    if (e.status !== 404) throw e
+  }
+  const imageDataUrl = await stillData(imgSrc(ex))
+  const made = await api('/api/guide/poster', {
+    method: 'POST',
+    timeout: 70000,
+    body: JSON.stringify({ id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl })
+  })
+  posterReady.set(ex.id, made.url)
+  return made.url
+}
+
 async function makeCatalogGuide(ex) {
+  let source = imgSrc(ex)
+  try {
+    const posterUrl = await ensurePoster(ex)
+    if (posterUrl) source = posterUrl
+  } catch { /* the catalog still is enough to start a clip */ }
   try {
     const had = await api('/api/guide/catalog?id=' + encodeURIComponent(ex.id))
     if (had?.url) { guideReady.set(ex.id, had.url); return had.url }
   } catch (e) {
     if (e.status !== 404) throw e
   }
-  const imageDataUrl = await stillData(imgSrc(ex))
+  const imageDataUrl = await stillData(source)
   const made = await api('/api/guide/catalog', {
     method: 'POST',
     timeout: 150000,
