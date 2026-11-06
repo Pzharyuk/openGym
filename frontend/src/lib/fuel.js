@@ -188,13 +188,15 @@ export async function pullFuel(uid) {
     const r = await api('/api/fuel')
     const local = loadFuel(uid)
     const merged = mergeFuel(r.doc, local.dirty ? local : r.doc)
-    merged.rev = r.rev || 0
-    merged.localGen = local.localGen || 0
-    const changed = JSON.stringify(sanitizeDoc(merged)) !== JSON.stringify(sanitizeDoc(r.doc))
-    merged.dirty = changed
-    saveLocal(uid, merged)
+    const latest = loadFuel(uid)
+    const base = latest.localGen !== local.localGen ? mergeFuel(merged, latest) : merged
+    base.rev = r.rev || 0
+    base.localGen = latest.localGen || 0
+    const changed = JSON.stringify(sanitizeDoc(base)) !== JSON.stringify(sanitizeDoc(r.doc)) || latest.localGen !== local.localGen
+    base.dirty = changed
+    saveLocal(uid, base)
     if (changed) void pushFuel(uid)
-    return merged
+    return loadFuel(uid)
   } catch {
     return loadFuel(uid)
   }

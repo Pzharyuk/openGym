@@ -256,7 +256,7 @@ export default function Fuel() {
       <h2 style={{ marginTop: 0 }}>{t('Meals')}</h2>
       {!meals.length && <div className="muted small">{t('Nothing logged for this day yet.')}</div>}
       {meals.map(meal => <div key={meal.id} className="row between" style={{ gap: 8, padding: '8px 0', borderTop: '1px solid var(--sep)' }}>
-        <button type="button" onClick={() => setDraft({ ...meal, correction: '' })} style={{ all: 'unset', cursor: 'pointer', minWidth: 0, flex: 1 }}>
+        <button type="button" onClick={() => setDraft({ ...meal, correction: '' })} style={{ background: 'none', border: 'none', color: 'inherit', textAlign: 'start', padding: 0, cursor: 'pointer', minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 600 }}>{meal.name}{meal.adjusted ? ' · ' + t('adjusted') : ''}</div>
           <div className="small muted">{round(meal.kcal)} kcal · {t('Protein')} {round(meal.protein)}g · {t('Carbs')} {round(meal.carbs)}g · {t('Fat')} {round(meal.fat)}g</div>
         </button>
