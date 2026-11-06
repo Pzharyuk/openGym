@@ -129,10 +129,11 @@ async function analyze(body) {
 }
 
 function promptFor(move, fromStill) {
-  const cues = (move.cues || []).filter(Boolean).join('. ')
-  const action = `${move.equipment} ${move.name}. ${cues ? cues + '.' : ''} One slow, correct repetition, then ease back to the start.`
-  if (fromStill) return `The person in the still performs ${action} Keep their identity and the gym. Side or three-quarter view. No text, no logos, no cuts, no extra people.`
-  return `Instructional gym clip. One athletic adult in plain workout clothes performs ${action} Bright gym, side view, no text, no logos, no cuts, no extra people.`
+  const motion = (move.cues || []).filter(Boolean).join(', then ')
+  const action = `one fluid repetition of the ${move.equipment} ${move.name}${motion ? '. The body moves through it in order: ' + motion : ''}.`
+  const frame = 'One single continuous video from one camera. The athlete fills the frame from head to feet or the working muscles. No collage, no storyboard, no comic strip, no stacked stills, no grid, no split screen, no repeated panels of the same pose, no borders, no letterboxing, no titles, no captions, no logos, no cuts, no extra people.'
+  if (fromStill) return `Animate the person in this still into ${action} Keep their identity and the gym. ${frame}`
+  return `Bright gym, side view. One athletic adult in plain workout clothes performs ${action} ${frame}`
 }
 
 async function renderVideo(body) {
@@ -144,9 +145,9 @@ async function renderVideo(body) {
     ? body.imageDataUrl
     : ''
   const move = { name, equipment: clip(body?.equipment, 40), cues: Array.isArray(body?.cues) ? body.cues.map(c => clip(c, 80)).filter(Boolean).slice(0, 3) : [] }
-  const base = { model: 'grok-imagine-video-1.5-lite', duration: 6, resolution: '480p', generate_audio: false }
+  const base = { model: 'grok-imagine-video-1.5-lite', duration: 6, resolution: '720p', aspect_ratio: '9:16', generate_audio: false }
   const withStill = image ? { ...base, prompt: promptFor(move, true), image: { url: image } } : null
-  const textOnly = { ...base, prompt: promptFor(move, false), aspect_ratio: '9:16' }
+  const textOnly = { ...base, prompt: promptFor(move, false) }
   let started = await postJSON('https://api.x.ai/v1/videos/generations', apiKey, withStill || textOnly, 30000)
   if (!started.ok && withStill) started = await postJSON('https://api.x.ai/v1/videos/generations', apiKey, textOnly, 30000)
   const id = started.json && (started.json.request_id || started.json.id)

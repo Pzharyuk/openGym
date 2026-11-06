@@ -87,7 +87,7 @@ function GuidePlayer({ move }) {
 
   if (!src && !cues.length) return null
   return <div>
-    {src && <video ref={ref} key={src} src={src} controls autoPlay muted loop playsInline style={{ width: '100%', maxHeight: 360, borderRadius: 12, background: '#000' }} />}
+    {src && <video ref={ref} key={src} src={src} autoPlay muted loop playsInline onClick={event => { const video = event.currentTarget; if (video.paused) video.play(); else video.pause() }} style={{ width: 'calc(100% + 32px)', height: 'min(72vh, 640px)', margin: '-16px -16px 10px', objectFit: 'cover', objectPosition: 'center', display: 'block', background: '#000', borderRadius: 'var(--r-card) var(--r-card) 0 0' }} />}
     {!!cues.length && <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
       {cues.map((cue, index) => <button key={cue} type="button" onClick={() => jump(index)} style={{
         textAlign: 'start', border: 'none', borderRadius: 10, padding: '8px 10px', cursor: 'pointer',
