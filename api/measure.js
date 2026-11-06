@@ -106,8 +106,15 @@ export function sanitizeMeasure(raw) {
     checks.push(check)
   }
   checks.sort((a, b) => a.t - b.t)
-  if (checks.length > MAX_CHECKS) checks.splice(0, checks.length - MAX_CHECKS)
-  return { checks, rewards: rewardsFor(checks) }
+  const kept = []
+  for (const check of checks) {
+    const prev = kept.findIndex(item => item.day === check.day && SITES.every(key => Math.round((item[key] || 0) * 10) === Math.round((check[key] || 0) * 10)) && Math.round((item.weight || 0) * 10) === Math.round((check.weight || 0) * 10) && Math.round((item.bodyFat || 0) * 10) === Math.round((check.bodyFat || 0) * 10))
+    if (prev < 0) { kept.push(check); continue }
+    const older = kept[prev]
+    kept[prev] = { ...check, id: older.id, t: older.t, photo: check.photo || older.photo }
+  }
+  if (kept.length > MAX_CHECKS) kept.splice(0, kept.length - MAX_CHECKS)
+  return { checks: kept, rewards: rewardsFor(kept) }
 }
 
 export function parseReading(text) {

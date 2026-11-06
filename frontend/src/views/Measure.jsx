@@ -90,8 +90,10 @@ export default function Measure() {
     } finally { setBusy(false) }
   }
 
+  const saving = useRef(false)
+
   const save = () => {
-    if (!draft) return
+    if (!draft || saving.current) return
     if (!SITES.some(([key]) => draft[key] > 0)) { toast(t('Add at least one measurement.')); return }
     const row = {
       id: draft.id || uid(),
@@ -105,12 +107,22 @@ export default function Measure() {
       adjusted: !!draft.adjusted
     }
     for (const [key] of SITES) row[key] = draft[key] || 0
+    const twin = doc.checks.find(item => item.id !== row.id && item.day === row.day && SITES.every(([key]) => Math.round((item[key] || 0) * 10) === Math.round((row[key] || 0) * 10)))
+    if (twin && !draft.id) {
+      setDraft(null)
+      setPhoto('')
+      setNote('')
+      toast(t('Already saved today'))
+      return
+    }
+    saving.current = true
     const before = new Set((doc.rewards || []).map(item => item.id))
-    const next = change(d => ({ ...d, checks: [...d.checks.filter(item => item.id !== row.id), row] }))
+    const next = change(d => ({ ...d, checks: [...d.checks.filter(item => item.id !== row.id && item.id !== twin?.id), row] }))
     const fresh = (next.rewards || []).filter(item => !before.has(item.id))
     setDraft(null)
     setPhoto('')
     setNote('')
+    saving.current = false
     toast(fresh.length ? t('Check-in saved. Reward: {0}', t(REWARDS.find(item => item[0] === fresh[0].id)?.[1] || 'Reward')) : t('Check-in saved'))
   }
 
@@ -168,7 +180,7 @@ export default function Measure() {
 
     {draft && <div className="card">
       <h2 style={{ marginTop: 0 }}>{t('Guessed measurements')}</h2>
-      {draft.photo && <img alt="" src={draft.photo} style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 12 }} />}
+      {draft.photo && <MarkedPhoto src={draft.photo} row={draft} unit={unit} />}
       <div className="muted small" style={{ margin: '8px 0' }}>{t('Visual guess, not a tape. Correct anything that looks wrong.')}</div>
       {draft.lesson && <p style={{ marginBottom: 8 }}>{draft.lesson}</p>}
       {!!draft.steps?.length && <ol className="small" style={{ marginTop: 0 }}>
@@ -194,7 +206,7 @@ export default function Measure() {
       {!doc.checks.length && <div className="muted small">{t('No check-ins yet.')}</div>}
       {[...doc.checks].reverse().map(row => <button key={row.id} type="button" onClick={() => setDraft({ ...row, correction: '' })} style={{ display: 'block', width: '100%', textAlign: 'start', background: 'none', border: 'none', color: 'inherit', padding: '8px 0', borderTop: '1px solid var(--sep)', cursor: 'pointer' }}>
         <div className="row" style={{ gap: 10 }}>
-          {row.photo && <img alt="" src={row.photo} style={{ width: 36, height: 48, objectFit: 'cover', borderRadius: 8 }} />}
+          {row.photo && <MarkedPhoto src={row.photo} row={row} unit={unit} compact />}
           <div>
             <div style={{ fontWeight: 650 }}>{fmtDate(row.day, true)}{row.adjusted ? ' · ' + t('adjusted') : ''}</div>
             <div className="small muted">{SITES.filter(([key]) => row[key] > 0).map(([key, label]) => t(label) + ' ' + fmtNum(toShow(key, row[key], unit)) + unitOf(key, unit)).join(' · ')}</div>
@@ -202,5 +214,37 @@ export default function Measure() {
         </div>
       </button>)}
     </div>
+  </div>
+}
+
+const PINS = [
+  ['weight', 8, 18],
+  ['bodyFat', 8, 82],
+  ['neck', 18, 50],
+  ['shoulders', 26, 78],
+  ['chest', 34, 24],
+  ['arm', 42, 80],
+  ['waist', 50, 38],
+  ['hips', 58, 68],
+  ['thigh', 72, 34],
+  ['calf', 86, 66]
+]
+
+function MarkedPhoto({ src, row, unit, compact }) {
+  const pins = PINS.filter(([key]) => row[key] > 0)
+  return <div style={{ position: 'relative', width: compact ? 72 : '100%', flex: 'none' }}>
+    <img alt="" src={src} style={compact
+      ? { width: 72, height: 96, objectFit: 'cover', objectPosition: 'center top', display: 'block', borderRadius: 8 }
+      : { width: '100%', height: 'auto', display: 'block', borderRadius: 12 }} />
+    {!compact && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {pins.map(([key, top, left]) => {
+        const label = SITES.find(item => item[0] === key)?.[1] || key
+        return <span key={key} style={{
+          position: 'absolute', top: top + '%', left: left + '%', transform: 'translate(-50%, -50%)',
+          background: 'rgba(0,0,0,.7)', color: '#fff', borderRadius: 8, padding: '2px 6px',
+          fontSize: 11, fontWeight: 650, lineHeight: 1.3, whiteSpace: 'nowrap'
+        }}>{t(label)} {fmtNum(toShow(key, row[key], unit))}{unitOf(key, unit)}</span>
+      })}
+    </div>}
   </div>
 }

@@ -97,8 +97,16 @@ export function sanitizeMeasure(raw) {
     checks.push(check)
   }
   checks.sort((a, b) => a.t - b.t)
-  if (checks.length > 120) checks.splice(0, checks.length - 120)
-  return { checks, rewards: rewardsFor(checks) }
+  const keys = SITES.map(([key]) => key)
+  const kept = []
+  for (const check of checks) {
+    const prev = kept.findIndex(item => item.day === check.day && keys.every(key => Math.round((item[key] || 0) * 10) === Math.round((check[key] || 0) * 10)))
+    if (prev < 0) { kept.push(check); continue }
+    const older = kept[prev]
+    kept[prev] = { ...check, id: older.id, t: older.t, photo: check.photo || older.photo }
+  }
+  if (kept.length > 120) kept.splice(0, kept.length - 120)
+  return { checks: kept, rewards: rewardsFor(kept) }
 }
 
 export function mergeMeasure(a, b) {

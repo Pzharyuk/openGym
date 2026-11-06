@@ -31,6 +31,17 @@ test('rewards come from the check-ins, not from a claimed badge', () => {
   assert.equal(ids.includes('eight'), false)
 })
 
+test('the same measurements on one day collapse to one check-in', () => {
+  const doc = sanitizeMeasure({
+    checks: [
+      { id: 'a', day: '2026-11-06', t: 1, waist: 94, chest: 107, weight: 95 },
+      { id: 'b', day: '2026-11-06', t: 2, waist: 94, chest: 107, weight: 95, photo: '' }
+    ]
+  })
+  assert.equal(doc.checks.length, 1)
+  assert.equal(doc.checks[0].id, 'a')
+})
+
 test('rewardsFor ignores a waist that never moved two centimeters', () => {
   const rewards = rewardsFor([
     { id: 'a', day: '2026-09-01', t: 1, waist: 80 },
