@@ -11,6 +11,7 @@ import { Button } from '../components/ui.jsx'
 import { tappable } from '../lib/use-sheet-keyboard.js'
 import { glyphOf } from '../lib/glyphs.js'
 import { todayFuelSummary } from '../lib/fuel.js'
+import { latestSite, loadMeasure } from '../lib/measure.js'
 import { guideSheet } from '../components/GuideSheet.jsx'
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
@@ -62,6 +63,7 @@ export default function Home() {
   const plannedPerWeek = Object.values(S.week).filter(ids => ids?.length).length
   const bwPoints = S.bodyweight.slice(-30).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
   const fuel = todayFuelSummary(user?.id)
+  const measure = latestSite(loadMeasure(user?.id), 'waist')
 
   // today's session shown right under the week strip
   const onToday = () => { if (S.active) nav('/workout'); else if (todayRoutines.length) startFlow(effectiveRoutineIds(S, todayISO())); else dayOverrideSheet(todayISO()) }
@@ -140,6 +142,19 @@ export default function Home() {
           <div>
             <div className="lbl2">{t('From a photo')}</div>
             <div className="ttl">{t('Build a workout')}</div>
+          </div>
+        </div>
+        <Icon name="chevronRight" className="chev" />
+      </div>
+    </div>
+
+    <div className="card tappable" style={{ cursor: 'pointer' }} {...tappable(() => nav('/measure'))}>
+      <div className="row between">
+        <div className="row" style={{ gap: 9 }}>
+          <span className="lrow-i" style={{ background: 'var(--blue)' }}><Icon name="chartLine" /></span>
+          <div>
+            <div className="lbl2">{t('Measure')}</div>
+            <div className="ttl">{measure ? t('Waist {0} {1}', fmtNum(S.unit === 'lb' ? measure.waist / 2.54 : measure.waist), S.unit === 'lb' ? 'in' : 'cm') : t('Photo, tape, and rewards')}</div>
           </div>
         </div>
         <Icon name="chevronRight" className="chev" />

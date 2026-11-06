@@ -32,6 +32,7 @@ import {
 import { createDeviceLink, findDeviceLink, burnDeviceLink, dropDeviceLinks } from './device-link.js';
 import { createMediaStore, mediaLimits, mediaConfig, MediaError, HASH_RE } from './media.js';
 import { fuelRoutes } from './fuel.js';
+import { measureRoutes } from './measure.js';
 import { guideRoutes } from './guide.js';
 
 const PORT = +(process.env.PORT || 3000);
@@ -2346,6 +2347,7 @@ const routes = {
 
   /* ---------- Fuel (calories). Own file, never the workout document. ---------- */
   ...fuelRoutes({ json, readBody, readSession, dataDir: DATA }),
+  ...measureRoutes({ json, readBody, readSession, dataDir: DATA }),
   ...guideRoutes({ json, readBody, readSession }),
 
   /* ---------- photos & videos ---------- */
