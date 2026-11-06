@@ -157,7 +157,7 @@ export default function Measure() {
       <TextArea rows={2} value={note} placeholder={unit === 'lb' ? t('Optional — 5 ft 11, or my waist was 33 in') : t('Optional — 180 cm, or my waist was 84')} onChange={e => setNote(e.target.value)} />
       <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <Button size="sm" icon="camera" onClick={() => fileRef.current?.click()}>{photo ? t('Photo added') : t('Progress photo')}</Button>
-        <input ref={fileRef} type="file" accept="image/*" capture="user" hidden onChange={onPhoto} />
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPhoto} />
         {photo && <img alt="" src={photo} style={{ width: 44, height: 56, objectFit: 'cover', borderRadius: 10 }} />}
       </div>
       <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
