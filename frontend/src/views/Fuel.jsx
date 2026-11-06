@@ -101,7 +101,10 @@ export default function Fuel() {
   const toast = useUI(s => s.toast)
   const user = useStore(s => s.user)
   const body = useStore(s => s.S)
+  const update = useStore(s => s.update)
   const unit = body.unit === 'lb' ? 'lb' : 'kg'
+  const profile = profileInputs(body)
+  const plan = caloriePlan(profile)
   const uid_ = user?.id || null
   const [day, setDay] = useState(todayISO())
   const [doc, setDoc] = useState(() => loadFuel(uid_))
@@ -135,22 +138,29 @@ export default function Fuel() {
   }
 
   const setTarget = (key, value) => {
-    change(d => ({ ...d, target: { ...d.target, [key]: value, locked: key === 'kcal' || key === 'protein' ? true : d.target.locked, t: Date.now() } }))
+    change(d => ({ ...d, target: { ...d.target, [key]: value, locked: true, t: Date.now() } }))
   }
 
-  const writePlan = (patch) => {
-    const bw = lastBW(body)
-    const kg = bw ? (unit === 'lb' ? bw.w / 2.2046226218 : bw.w) : 0
-    change(d => {
-      const next = { ...d.target, ...patch, t: Date.now() }
-      const got = caloriePlan({ kg, heightCm: next.heightCm, lossLb: next.lossLb, age: next.age, sex: next.sex })
-      if (got && !next.locked) {
-        next.kcal = got.kcal
-        next.protein = got.protein
+  useEffect(() => {
+    const saved = doc?.target
+    if (!saved?.heightCm || body.heightCm) return
+    update(s => {
+      s.heightCm = saved.heightCm
+      if (!s.age && saved.age) s.age = saved.age
+      const bw = lastBW(s)
+      if (!s.targetW && saved.lossLb && bw) {
+        const loss = s.unit === 'lb' ? saved.lossLb : saved.lossLb / 2.2046226218
+        const goal = Math.round((bw.w - loss) * 10) / 10
+        if (goal > 20) s.targetW = goal
       }
-      return { ...d, target: next }
     })
-  }
+  }, [body.heightCm, doc?.target?.heightCm])
+
+  useEffect(() => {
+    if (!plan || doc.target.locked) return
+    if (plan.kcal === doc.target.kcal && plan.protein === doc.target.protein) return
+    change(d => ({ ...d, target: { ...d.target, kcal: plan.kcal, protein: plan.protein, t: Date.now() } }))
+  }, [plan?.kcal, plan?.protein, doc.target.locked])
 
   const onPhoto = async e => {
     const file = e.target.files?.[0]
@@ -278,23 +288,8 @@ export default function Fuel() {
         <Icon name="flame" style={{ color: 'var(--orange)', fontSize: 16 }} />
         <span className="small">{t(streak === 1 ? '{0} day logged' : '{0} days logged', streak)}</span>
       </div>
-      <div className="row" style={{ gap: 10, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <label className="small muted">{t('Height')} ({unit === 'lb' ? 'in' : 'cm'})
-          <NumberField aria-label={t('Height')} value={heightField(doc.target.heightCm, unit)} decimal={false} onChange={n => writePlan({ heightCm: n ? (unit === 'lb' ? n * 2.54 : n) : 0, locked: false })} style={{ width: 64, marginInlineStart: 6 }} />
-        </label>
-        <label className="small muted">{t('Lose')} ({unit})
-          <NumberField aria-label={t('Weight to lose')} value={lossField(doc.target.lossLb, unit)} decimal={false} onChange={n => writePlan({ lossLb: n ? (unit === 'lb' ? n : n * 2.2046226218) : 0, locked: false })} style={{ width: 56, marginInlineStart: 6 }} />
-        </label>
-        <label className="small muted">{t('Age')}
-          <NumberField aria-label={t('Age')} value={doc.target.age || 0} decimal={false} onChange={n => writePlan({ age: n || 0, locked: false })} style={{ width: 52, marginInlineStart: 6 }} />
-        </label>
-      </div>
-      <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-        {[['', 'Average'], ['m', 'Male'], ['f', 'Female']].map(([id, label]) =>
-          <button key={id || 'avg'} type="button" className={'tag' + (doc.target.sex === id ? ' acc' : '')} onClick={() => writePlan({ sex: id, locked: false })}>{t(label)}</button>
-        )}
-      </div>
-      <div className="small muted" style={{ marginTop: 8 }}>{planLine(body, unit, doc.target)}</div>
+      <div className="small muted" style={{ marginTop: 12 }}>{planLine(profile, plan, doc.target.locked)}</div>
+      <div style={{ marginTop: 8 }}><Button size="sm" variant="ghost" onClick={() => nav('/settings')}>{t('Height, age, and goal weight are in Settings')}</Button></div>
       <div className="row" style={{ gap: 10, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <label className="small muted">{t('Target')}
           <NumberField aria-label={t('Calorie target')} value={doc.target.kcal} decimal={false} onChange={n => setTarget('kcal', Math.max(500, n || 0))} style={{ width: 72, marginInlineStart: 6 }} />
@@ -303,7 +298,7 @@ export default function Fuel() {
           <NumberField aria-label={t('Protein target')} value={doc.target.protein} decimal={false} onChange={n => setTarget('protein', n || 0)} style={{ width: 56, marginInlineStart: 6 }} />
           <span> g</span>
         </label>
-        {doc.target.locked && <Button size="sm" variant="ghost" onClick={() => writePlan({ locked: false })}>{t('Recalculate')}</Button>}
+        {doc.target.locked && plan && <Button size="sm" variant="ghost" onClick={() => change(d => ({ ...d, target: { ...d.target, kcal: plan.kcal, protein: plan.protein, locked: false, t: Date.now() } }))}>{t('Recalculate')}</Button>}
       </div>
     </div>
 
@@ -393,24 +388,27 @@ export default function Fuel() {
   </div>
 }
 
-function heightField(cm, unit) {
-  if (!cm) return 0
-  return unit === 'lb' ? Math.round(cm / 2.54) : Math.round(cm)
+function profileInputs(S) {
+  const unit = S.unit === 'lb' ? 'lb' : 'kg'
+  const bw = lastBW(S)
+  const kg = bw ? (unit === 'lb' ? bw.w / 2.2046226218 : bw.w) : 0
+  const delta = bw && S.targetW && bw.w > S.targetW ? bw.w - S.targetW : 0
+  return {
+    unit, bw, kg,
+    heightCm: Number(S.heightCm) || 0,
+    age: Number(S.age) || 0,
+    sex: S.body === 'female' ? 'f' : 'm',
+    lossLb: unit === 'lb' ? delta : delta * 2.2046226218
+  }
 }
 
-function lossField(lb, unit) {
-  if (!lb) return 0
-  return unit === 'lb' ? Math.round(lb) : Math.round(lb / 2.2046226218)
-}
-
-function planLine(body, unit, target) {
-  const bw = lastBW(body)
+function planLine(profile, plan, locked) {
+  const { unit, bw } = profile
   if (!bw) return t('Log a weigh-in and the target can use your weight.')
-  const kg = unit === 'lb' ? bw.w / 2.2046226218 : bw.w
-  const plan = caloriePlan({ kg, heightCm: target.heightCm, lossLb: target.lossLb, age: target.age, sex: target.sex })
   const weight = t('Using {0} {1} from your last weigh-in.', fmtNum(bw.w), unit)
-  if (!plan) return weight + ' ' + t('Add a height to set the calories.')
-  if (target.locked) return weight + ' ' + t('Target is edited by hand.')
+  if (!profile.heightCm) return weight + ' ' + t('Set your height in Settings.')
+  if (!plan) return weight
+  if (locked) return weight + ' ' + t('Target is edited by hand.')
   if (!plan.weekly) return weight + ' ' + t('Maintenance is {0} kcal. Protein {1} g.', plan.kcal, plan.protein)
   const pace = unit === 'lb' ? plan.weekly : Math.round(plan.weekly / 2.2046226218 * 10) / 10
   return weight + ' ' + t('About {0} {1} a week, held at or above {2} kcal.', pace, unit, plan.floor)

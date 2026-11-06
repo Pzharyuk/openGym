@@ -34,7 +34,8 @@ export default function Measure() {
   const nav = useNavigate()
   const toast = useUI(s => s.toast)
   const user = useStore(s => s.user)
-  const unit = useStore(s => s.S.unit)
+  const S = useStore(s => s.S)
+  const unit = S.unit === 'lb' ? 'lb' : 'kg'
   const uid_ = user?.id || null
   const [doc, setDoc] = useState(() => loadMeasure(uid_))
   const [site, setSite] = useState('waist')
@@ -77,7 +78,10 @@ export default function Measure() {
           note: note.trim() || undefined,
           correction: correction.trim() || undefined,
           previous: previous || undefined,
-          unit: unit === 'lb' ? 'lb' : 'kg'
+          unit: unit === 'lb' ? 'lb' : 'kg',
+          heightCm: S.heightCm || undefined,
+          age: S.age || undefined,
+          sex: S.body === 'female' ? 'f' : 'm'
         })
       })
       setDraft({ ...blank(''), ...r.reading, photo, adjusted: !!correction, correction: '' })

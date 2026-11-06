@@ -29,7 +29,7 @@ import Icon from '../components/Icon.jsx'
 import { ServerSyncSection, KeptChangesRows, leaveServer, connectServer, passkeySignIn } from '../components/ServerSync.jsx'
 import { passwordOn, PasswordRow, openPasswordSignIn, openPasswordRegister } from '../components/PasswordAuth.jsx'
 import { usePasskeys, PasskeysRow, DeviceLinkRow } from '../components/Passkeys.jsx'
-import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
+import { Section, Row, SelectRow, Switch, Segmented, Button, TextField, NumberField } from '../components/ui.jsx'
 
 export default function Settings() {
   const nav = useNavigate()
@@ -361,6 +361,15 @@ export default function Settings() {
           options={[{ value: 'kg', label: 'kg' }, { value: 'lb', label: 'lb' }]}
           value={S.unit} onChange={v => switchUnit(v)} />
       </Row>
+      <Row icon="figureStrength" iconTint="var(--teal)" title={t('Height')} subtitle={S.unit === 'lb' ? t('Inches. Fuel and Measure use this.') : t('Centimeters. Fuel and Measure use this.')}>
+        <NumberField aria-label={t('Height')} decimal={false} value={shownHeight(S)} onChange={n => update(s => { s.heightCm = n ? (s.unit === 'lb' ? Math.round(n * 2.54 * 10) / 10 : n) : 0 })} style={{ width: 72 }} />
+      </Row>
+      <Row icon="clock" iconTint="var(--teal)" title={t('Age')} subtitle={t('Blank uses 30 for the calorie target.')}>
+        <NumberField aria-label={t('Age')} decimal={false} value={S.age || 0} onChange={n => update(s => { s.age = n && n < 120 ? n : 0 })} style={{ width: 64 }} />
+      </Row>
+      <Row icon="scale" iconTint="var(--teal)" title={t('Goal weight')} subtitle={t('{0}. Below your last weigh-in, Fuel cuts calories.', S.unit)}>
+        <NumberField aria-label={t('Goal weight')} value={S.targetW || 0} onChange={n => update(s => { s.targetW = n || null })} style={{ width: 72 }} />
+      </Row>
       {/* Cardio speed (Discord "miles per hour"). Unlike the weight unit this converts nothing:
           speeds stay stored in km/h and only what is shown and typed follows it (lib/speed.js).
           Until chosen it follows the weight unit, so a profile in pounds already reads mph. */}
@@ -521,8 +530,8 @@ export default function Settings() {
           onChange={v => update(s => { s.theme = v })}
         />
       </Row>
-      {/* Purely how the muscle map is drawn — nothing else in the app reads this. */}
-      <Row icon="figureStrength" iconTint="var(--teal)" title={t('Body diagram')}>
+      {/* Male or female figure, and the sex used by the calorie target. */}
+      <Row icon="figureStrength" iconTint="var(--teal)" title={t('Body')} subtitle={t('The muscle diagram, and the calorie target.')}>
         <Segmented
           className="seg-inline"
           options={[{ value: 'male', label: t('Male') }, { value: 'female', label: t('Female') }]}
@@ -936,4 +945,10 @@ function RegisterInline({ close, setUser, pushState, pullState, toast }) {
     </>}
     <div style={{ height: 12 }} /><Button variant="primary" onClick={go}>{t('Create passkey')}</Button>
   </>
+}
+
+function shownHeight(S) {
+  const cm = Number(S.heightCm) || 0
+  if (!cm) return 0
+  return S.unit === 'lb' ? Math.round(cm / 2.54) : Math.round(cm)
 }

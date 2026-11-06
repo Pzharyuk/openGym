@@ -201,6 +201,10 @@ async function teach(body) {
   parts.push(unit === 'lb'
     ? 'Write lesson, steps, and note in pounds and inches. The JSON numbers themselves stay centimeters and kilograms.'
     : 'Write lesson, steps, and note in kilograms and centimeters. The JSON numbers are those units too.')
+  const height = num(body?.heightCm, 250, 0)
+  const age = num(body?.age, 100, 0)
+  const sex = body?.sex === 'f' ? 'female' : body?.sex === 'm' ? 'male' : ''
+  if (height || age || sex) parts.push('Profile from settings: ' + [height ? height + ' cm tall' : '', age ? age + ' years old' : '', sex].filter(Boolean).join(', ') + '. Use it when the photo does not show a tape.')
   if (note) parts.push('Note: ' + note)
   if (previous && correction) {
     parts.push('Previous check-in JSON:\n' + previous)
