@@ -37,6 +37,18 @@ const num = (value, max, decimals = 1) => {
 
 const clip = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
+function savedPortion(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return 1
+  return Math.min(8, Math.round(n * 100) / 100)
+}
+
+function savedGrams(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.min(5000, Math.round(n))
+}
+
 // A density score, not a medical grade. Protein, fiber and potassium raise it.
 // Sugar, saturated fat, sodium and cholesterol lower it. Computed here so a
 // model cannot invent the number.
@@ -69,7 +81,7 @@ function sanitizeItem(raw) {
   const name = clip(raw.name, 80)
   if (!name) return null
   const fields = macroFields(raw, 2500)
-  return { name, amount: clip(raw.amount, 40), ...fields, score: healthScore(fields) }
+  return { name, amount: clip(raw.amount, 40), grams: savedGrams(raw.grams), portion: savedPortion(raw.portion), serving: clip(raw.serving, 40), ...fields, score: healthScore(fields) }
 }
 
 function sanitizeMeal(raw) {

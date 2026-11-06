@@ -77,6 +77,56 @@ function macroLine(item) {
   ].join(' · ')
 }
 
+function gramsIn(amount) {
+  const match = String(amount || '').match(/(\d+(?:\.\d+)?)\s*g\b/i)
+  return match ? Math.round(Number(match[1])) : 0
+}
+
+function servingWords(amount) {
+  return String(amount || '')
+    .replace(/\d+(?:\.\d+)?\s*oz\b/gi, '')
+    .replace(/\(?\d+(?:\.\d+)?\s*g\)?/gi, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^[,·\-–\s]+|[,·\-–\s]+$/g, '')
+    .trim()
+}
+
+function stampItem(item) {
+  if (item.base) return item
+  const portion = item.portion > 0 ? item.portion : 1
+  const base = {}
+  for (const [key] of ITEM_FIELDS) base[key] = Math.round(((Number(item[key]) || 0) / portion) * 10) / 10
+  const grams = item.grams > 0 ? item.grams : (portion === 1 ? gramsIn(item.amount) : 0)
+  return { ...item, base, grams, portion, serving: item.serving || servingWords(item.amount) }
+}
+
+function portionAmount(item, portion) {
+  if (item.grams > 0) {
+    const g = Math.round(item.grams * portion)
+    const oz = Math.round((g / 28.3495) * 10) / 10
+    const qty = oz >= 0.1 ? oz + ' oz (' + g + 'g)' : g + 'g'
+    return [qty, item.serving].filter(Boolean).join(' ').slice(0, 40)
+  }
+  if (portion === 1) return (item.serving || item.amount || '').slice(0, 40)
+  const label = portion === 0.25 ? '1/4' : portion === 0.5 ? '1/2' : portion === 0.75 ? '3/4' : portion === 1.5 ? '1 1/2' : String(portion)
+  const base = item.serving || item.amount || ''
+  return ((base ? base + ' · ' : '') + label + '×').slice(0, 40)
+}
+
+function scaleItem(item, portion) {
+  const nextPortion = Math.min(8, Math.max(0.1, Math.round(portion * 100) / 100))
+  const next = { ...item, portion: nextPortion }
+  for (const [key] of ITEM_FIELDS) {
+    const raw = (item.base?.[key] || 0) * nextPortion
+    next[key] = key === 'kcal' || key === 'sodium' || key === 'cholesterol' || key === 'potassium' ? Math.round(raw) : Math.round(raw * 10) / 10
+  }
+  next.amount = portionAmount(item, nextPortion)
+  next.score = healthScore(next)
+  return next
+}
+
+const PORTIONS = [[0.25, '1/4'], [0.5, '1/2'], [0.75, '3/4'], [1, '1'], [1.5, '1 1/2'], [2, '2']]
+
 function retotal(draft, items) {
   const sumKey = key => items.reduce((n, item) => n + (Number(item[key]) || 0), 0)
   return {
@@ -191,6 +241,7 @@ export default function Fuel() {
       setDraft({
         id: draft?.id || null,
         ...r.estimate,
+        items: (r.estimate.items || []).map(stampItem),
         source: 'ai',
         adjusted: !!correction.trim(),
         correction: ''
@@ -343,11 +394,26 @@ export default function Fuel() {
             <span style={{ fontWeight: 600, minWidth: 0 }}>{item.name}{item.amount ? ' · ' + item.amount : ''}</span>
             <span className="tag" style={{ color: scoreColor(item.score), fontWeight: 700 }}>{item.score} · {t(scoreLabel(item.score))}</span>
           </div>
+          <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="small muted">{t('Portion')}</span>
+            {PORTIONS.map(([value, label]) => <button key={value} type="button" className={'chip' + ((item.portion || 1) === value ? ' on' : '')} onClick={() => {
+              const items = draft.items.map((row, index) => index === i ? scaleItem(stampItem(row), value) : row)
+              setDraft(retotal(draft, items))
+            }}>{label}</button>)}
+            {item.grams > 0 && <label className="small muted">{t('g')}
+              <NumberField aria-label={t('Grams')} value={Math.round(item.grams * (item.portion || 1))} decimal={false} onChange={n => {
+                if (!n) return
+                const items = draft.items.map((row, index) => index === i ? scaleItem(stampItem(row), n / row.grams) : row)
+                setDraft(retotal(draft, items))
+              }} style={{ width: 64, marginInlineStart: 6 }} />
+            </label>}
+          </div>
           <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
             {ITEM_FIELDS.map(([key, label, unit]) => <Field key={key} label={t(label) + (unit ? ' ' + unit : '')} value={item[key]} onChange={n => {
               const items = draft.items.map((row, index) => {
                 if (index !== i) return row
-                const next = { ...row, [key]: n }
+                const stamped = stampItem(row)
+                const next = { ...stamped, [key]: n, base: { ...stamped.base, [key]: (Number(n) || 0) / (stamped.portion || 1) } }
                 return { ...next, score: healthScore(next) }
               })
               setDraft(retotal(draft, items))
@@ -371,7 +437,7 @@ export default function Fuel() {
       <h2 style={{ marginTop: 0 }}>{t('Meals')}</h2>
       {!meals.length && <div className="muted small">{t('Nothing logged for this day yet.')}</div>}
       {meals.map(meal => <div key={meal.id} className="row between" style={{ gap: 8, padding: '8px 0', borderTop: '1px solid var(--sep)' }}>
-        <button type="button" onClick={() => setDraft({ ...meal, correction: '' })} style={{ background: 'none', border: 'none', color: 'inherit', textAlign: 'start', padding: 0, cursor: 'pointer', minWidth: 0, flex: 1 }}>
+        <button type="button" onClick={() => setDraft({ ...meal, correction: '', items: (meal.items || []).map(stampItem) })} style={{ background: 'none', border: 'none', color: 'inherit', textAlign: 'start', padding: 0, cursor: 'pointer', minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 600 }}>{meal.name}{meal.adjusted ? ' · ' + t('adjusted') : ''}</div>
           <div className="small muted">{macroLine(meal)}</div>
           {!!meal.items?.length && meal.items.map((item, index) => <div key={item.name + index} style={{ marginTop: 8 }}>

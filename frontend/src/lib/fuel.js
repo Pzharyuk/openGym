@@ -15,6 +15,18 @@ const num = (value, max, decimals = 1) => {
 }
 const text = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
+function savedPortion(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return 1
+  return Math.min(8, Math.round(n * 100) / 100)
+}
+
+function savedGrams(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.min(5000, Math.round(n))
+}
+
 const GRAMS = ['protein', 'carbs', 'fat', 'fiber', 'sugar', 'satFat']
 const MG = ['sodium', 'cholesterol', 'potassium']
 
@@ -43,7 +55,7 @@ function sanitizeItem(raw) {
   const name = text(raw?.name, 80)
   if (!name) return null
   const fields = macrosOf(raw, 2500)
-  return { name, amount: text(raw?.amount, 40), ...fields, score: healthScore(fields) }
+  return { name, amount: text(raw?.amount, 40), grams: savedGrams(raw?.grams), portion: savedPortion(raw?.portion), serving: text(raw?.serving, 40), ...fields, score: healthScore(fields) }
 }
 
 function sanitizeMeal(raw) {
