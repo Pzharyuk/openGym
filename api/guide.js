@@ -133,9 +133,10 @@ async function analyze(body) {
 function promptFor(move, fromStill) {
   const motion = (move.cues || []).filter(Boolean).join(', then ')
   const action = `one fluid repetition of the ${move.equipment} ${move.name}${motion ? '. The body moves through it in order: ' + motion : ''}.`
+  const extra = move.extra ? ' The user says the last clip was wrong. Follow this and let it override the guess: ' + move.extra + '.' : ''
   const frame = 'One single continuous video from one camera. No collage, no storyboard, no comic strip, no stacked stills, no grid, no split screen, no repeated panels, no borders, no letterboxing, no titles, no captions, no logos, no cuts, no extra people.'
-  if (fromStill) return `The attached photo is the first frame. Keep this person, this gym, and this framing, and animate them through ${action} Do not replace the person or redraw the scene. ${frame}`
-  return `Bright gym, side view. One athletic adult in plain workout clothes performs ${action} ${frame}`
+  if (fromStill) return `The attached photo is the first frame. Keep this person, this gym, and this framing, and animate them through ${action}${extra} Do not replace the person or redraw the scene. ${frame}`
+  return `Bright gym, side view. One athletic adult in plain workout clothes performs ${action}${extra} ${frame}`
 }
 
 const GUIDE_ID = /^[0-9A-Za-z_-]{1,64}$/
@@ -187,7 +188,7 @@ async function renderVideo(body) {
   const image = typeof body?.imageDataUrl === 'string' && body.imageDataUrl.length <= 700000 && /^data:image\/(jpeg|jpg|png|webp);/i.test(body.imageDataUrl)
     ? body.imageDataUrl
     : ''
-  const move = { name, equipment: clip(body?.equipment, 40) || 'body weight', cues: Array.isArray(body?.cues) ? body.cues.map(c => clip(c, 80)).filter(Boolean).slice(0, 3) : [] }
+  const move = { name, equipment: clip(body?.equipment, 40) || 'body weight', cues: Array.isArray(body?.cues) ? body.cues.map(c => clip(c, 80)).filter(Boolean).slice(0, 3) : [], extra: clip(body?.prompt, 400) }
   try {
     const clipOut = await imagineClip(move, image)
     if (clipOut.error) return { status: 502, error: clipOut.error }

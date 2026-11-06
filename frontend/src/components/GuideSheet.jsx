@@ -163,6 +163,7 @@ function GuideForm({ close }) {
           name: move.name,
           equipment: move.equipment,
           cues: move.cues,
+          prompt: move.prompt || undefined,
           imageDataUrl: frames[0] || undefined
         })
       })
@@ -243,6 +244,7 @@ function GuideForm({ close }) {
         {rendering === index && <div className="small muted" style={{ marginTop: 8 }}>{t('Rendering a 6 second guide…')}</div>}
         <div style={{ fontWeight: 600, marginTop: 8 }}>{move.name}</div>
         <div className="small muted">{move.sets} × {move.reps} · {t(move.equipment)}</div>
+        <input className="input" style={{ marginTop: 8 }} placeholder={t('If the clip is wrong — slower, face the camera, one push-up')} value={move.prompt || ''} onChange={e => setWorkout(current => current && { ...current, moves: current.moves.map((row, i) => i === index ? { ...row, prompt: e.target.value } : row) })} />
         <Button size="sm" variant="ghost" disabled={rendering >= 0} onClick={() => guide(index)}>{move.videoUrl || move.videoData ? t('Redo guide') : t('Form guide')}</Button>
       </div>)}
       <div style={{ height: 12 }} />
