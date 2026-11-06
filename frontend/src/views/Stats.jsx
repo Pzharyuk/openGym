@@ -21,6 +21,8 @@ import {
   effortHistogram, isHardSet, HARD_RIR
 } from '../lib/effort.js'
 import { Button, Segmented, SelectRow } from '../components/ui.jsx'
+import { loadMeasure, pullMeasure, SITES } from '../lib/measure.js'
+import { loadFuel, pullFuel } from '../lib/fuel.js'
 import { tappable } from '../lib/use-sheet-keyboard.js'
 import { isWarmupRow } from '../lib/workout-model.js'
 
@@ -532,6 +534,8 @@ export default function Stats() {
       </div>
     </div>
 
+    <ResultsCard range={range} />
+
     {workouts.length > 0 && <>
       <div className="row between" style={{ marginBottom: 10 }}>
         <h4 className="sec" style={{ margin: 0 }}>{t('Recent workouts')}</h4>
@@ -540,4 +544,84 @@ export default function Stats() {
       <div className="list">{[...workouts].reverse().slice(0, 6).map(w => <WorkoutRow key={w.id} w={w} onClick={() => workoutDetailSheet(w)} />)}</div>
     </>}
   </>
+}
+
+function shownMeasure(key, value, unit) {
+  if (!value) return 0
+  if (key === 'bodyFat') return value
+  if (key === 'weight') return unit === 'lb' ? value * 2.2046226218 : value
+  return unit === 'lb' ? value / 2.54 : value
+}
+
+function measureUnit(key, unit) {
+  if (key === 'bodyFat') return '%'
+  if (key === 'weight') return unit
+  return unit === 'lb' ? 'in' : 'cm'
+}
+
+function ResultsCard({ range }) {
+  const nav = useNavigate()
+  const unit = useStore(s => s.S.unit === 'lb' ? 'lb' : 'kg')
+  const uid = useStore(s => s.user?.id || null)
+  const [measure, setMeasure] = useState(() => loadMeasure(uid))
+  const [fuel, setFuel] = useState(() => loadFuel(uid))
+  const [site, setSite] = useState('waist')
+  useEffect(() => {
+    let gone = false
+    pullMeasure(uid).then(next => { if (!gone && next) setMeasure(next) })
+    pullFuel(uid).then(next => { if (!gone && next) setFuel(next) })
+    return () => { gone = true }
+  }, [uid])
+
+  const now = Date.now()
+  const inRange = t0 => range === 0 || t0 > now - range * 86400000
+  const checks = (measure.checks || []).filter(row => inRange(row.t || new Date(row.day).getTime()))
+  const sites = SITES.filter(([key]) => checks.some(row => row[key] > 0))
+  const current = sites.some(([key]) => key === site) ? site : (sites[0]?.[0] || 'waist')
+  const points = checks.filter(row => row[current] > 0).map(row => ({
+    t: row.t || new Date(row.day).getTime(),
+    y: Math.round(shownMeasure(current, row[current], unit) * 10) / 10,
+    d: row.day
+  }))
+  const latest = [...checks].reverse().find(row => row[current] > 0)
+  const byDay = new Map()
+  for (const meal of fuel.meals || []) {
+    const stamp = new Date(meal.day + 'T12:00:00').getTime()
+    if (!meal.day || !inRange(stamp)) continue
+    const prev = byDay.get(meal.day) || { t: stamp, y: 0, d: meal.day, protein: 0 }
+    prev.y += meal.kcal || 0
+    prev.protein += meal.protein || 0
+    byDay.set(meal.day, prev)
+  }
+  const meals = [...byDay.values()].sort((a, b) => a.t - b.t)
+  const today = meals.filter(row => row.d === todayISO()).at(-1)
+
+  return <div className="card">
+    <div className="row between" style={{ marginBottom: 8, gap: 8 }}>
+      <h2 style={{ margin: 0 }}>{t('Measure & Fuel')}</h2>
+      <div className="row" style={{ gap: 8 }}>
+        <Button size="sm" variant="ghost" trailingIcon="chevronRight" onClick={() => nav('/measure')}>{t('Measure')}</Button>
+        <Button size="sm" variant="ghost" trailingIcon="chevronRight" onClick={() => nav('/fuel')}>{t('Fuel')}</Button>
+      </div>
+    </div>
+    {sites.length > 0 && <>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+        {sites.map(([key, label]) => <button key={key} type="button" className={'tag' + (current === key ? ' acc' : '')} onClick={() => setSite(key)}>{t(label)}</button>)}
+      </div>
+      <div className="chart"><LineChart points={points} h={150} unit={measureUnit(current, unit)} color="var(--blue)" /></div>
+      {latest && <div className="small muted" style={{ marginTop: 8 }}>
+        {t('Latest')} {fmtNum(shownMeasure(current, latest[current], unit))} {measureUnit(current, unit)} · {fmtDate(latest.day, true)}
+        {latest.bodyFat > 0 && current !== 'bodyFat' ? ' · ' + fmtNum(latest.bodyFat) + '%' : ''}
+      </div>}
+    </>}
+    {!sites.length && <div className="muted small">{t('A saved check-in shows its chart here.')}</div>}
+    {meals.length > 0 && <>
+      <h2 style={{ margin: '14px 0 8px' }}>{t('Calories')}</h2>
+      <div className="chart"><LineChart points={meals} h={140} unit="kcal" color="var(--orange)" goal={fuel.target?.kcal || null} /></div>
+      <div className="small muted" style={{ marginTop: 8 }}>
+        {today ? t('Today {0} kcal · {1} g protein', Math.round(today.y), Math.round(today.protein)) : t('{0} days logged', meals.length)}
+        {fuel.target?.kcal ? ' · ' + t('Target {0}', fuel.target.kcal) : ''}
+      </div>
+    </>}
+  </div>
 }
