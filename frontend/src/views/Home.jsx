@@ -10,6 +10,7 @@ import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { tappable } from '../lib/use-sheet-keyboard.js'
 import { glyphOf } from '../lib/glyphs.js'
+import { todayFuelSummary } from '../lib/fuel.js'
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
 export default function Home() {
@@ -59,6 +60,7 @@ export default function Home() {
   // Days scheduled, not routines — a combined day counts as 1, matching wThisWeek (one w).
   const plannedPerWeek = Object.values(S.week).filter(ids => ids?.length).length
   const bwPoints = S.bodyweight.slice(-30).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
+  const fuel = todayFuelSummary(user?.id)
 
   // today's session shown right under the week strip
   const onToday = () => { if (S.active) nav('/workout'); else if (todayRoutines.length) startFlow(effectiveRoutineIds(S, todayISO())); else dayOverrideSheet(todayISO()) }
@@ -129,6 +131,19 @@ export default function Home() {
         </div>
       </div>
     )}
+
+    <div className="card tappable" style={{ cursor: 'pointer' }} {...tappable(() => nav('/fuel'))}>
+      <div className="row between">
+        <div className="row" style={{ gap: 9 }}>
+          <span className="lrow-i" style={{ background: 'var(--orange)' }}><Icon name="flame" /></span>
+          <div>
+            <div className="lbl2">{t('Fuel')}</div>
+            <div className="ttl">{fuel.count ? t('{0} kcal today', fuel.kcal) : t('Calories and meals')}</div>
+          </div>
+        </div>
+        <Icon name="chevronRight" className="chev" />
+      </div>
+    </div>
 
     {!S.routines.length && !S.active && (
       <div className="card">
