@@ -25,18 +25,32 @@ function BuiltinMedia({ ex, id, compact, minimizable }) {
   const [failed, setFailed] = useState(null)
   const [clipUrl, setClipUrl] = useState('')
   const [making, setMaking] = useState(false)
+  const [guideError, setGuideError] = useState('')
+  const [attempt, setAttempt] = useState(0)
   const videoRef = useRef(null)
   const gifSize = useStore(s => s.S.gifSize)
   const update = useStore(s => s.update)
   const userId = useStore(s => s.user?.id || '')
+  const focused = useStore(s => {
+    if (!minimizable) return true
+    const active = s.S.active
+    if (!active?.entries?.length) return true
+    const cur = Number.isInteger(active.cur) ? active.cur : 0
+    return active.entries[cur]?.id === ex?.id
+  })
   const mini = minimizable && gifSize === 'mini'
   useEffect(() => {
-    if (!userId || !ex?.img || !ex?.gif || compact || mini || (minimizable && gifSize === 'off')) return
+    if (!focused || !userId || !ex?.img || !ex?.gif || compact || mini || (minimizable && gifSize === 'off')) return
     let gone = false
     setMaking(true)
-    catalogGuide(ex).then(url => { if (!gone && url) setClipUrl(url) }).catch(() => {}).finally(() => { if (!gone) setMaking(false) })
+    setGuideError('')
+    catalogGuide(ex).then(url => {
+      if (!gone && url) setClipUrl(url)
+    }).catch(e => {
+      if (!gone) setGuideError(e?.message || t('The video guide failed.'))
+    }).finally(() => { if (!gone) setMaking(false) })
     return () => { gone = true }
-  }, [userId, ex?.id, ex?.img, compact, mini, minimizable, gifSize])
+  }, [attempt, focused, userId, ex?.id, ex?.img, compact, mini, minimizable, gifSize])
   if (!ex.gif) return null
   if (minimizable && gifSize === 'off') return null
   const toggleSize = e => { e.stopPropagation(); update(s => { s.gifSize = mini ? 'full' : 'mini' }) }
@@ -53,9 +67,9 @@ function BuiltinMedia({ ex, id, compact, minimizable }) {
     setPlaying(p => !p)
   }
   return (
-    <div className={'exmedia' + (compact ? ' compact' : '') + (mini ? ' mini' : '') + (failed === 'all' && !clipUrl ? ' broken' : '')} id={id} onClick={onTap}>
+    <div className={'exmedia' + (clipUrl ? ' guide' : '') + (compact ? ' compact' : '') + (mini ? ' mini' : '') + (failed === 'all' && !clipUrl ? ' broken' : '')} id={id} onClick={onTap}>
       {clipUrl
-        ? <video ref={videoRef} src={clipUrl} autoPlay muted loop playsInline style={{ objectFit: 'cover' }} />
+        ? <video ref={videoRef} src={clipUrl} autoPlay muted loop playsInline style={{ objectFit: 'cover' }} onError={() => { guideReady.delete(ex.id); setClipUrl(''); setGuideError(t('The video guide did not play.')) }} />
         : failed === 'all'
         ? <div className="exmedia-x"><Icon name="dumbbell" /></div>
         : <img decoding="async" draggable={false} src={showGif ? gifSrc(ex) : imgSrc(ex)} alt={exerciseNameFor(ex)} onError={onError} />}
@@ -64,8 +78,9 @@ function BuiltinMedia({ ex, id, compact, minimizable }) {
           <Icon name={mini ? 'expand' : 'minimize'} />{mini ? t('Expand') : t('Minimize')}
         </button>
       )}
-      {making && !clipUrl && <span className="gifhint">{t('Video guide…')}</span>}
-      {!mini && !failed && !making && !clipUrl && (
+      {making && !clipUrl && <span className="gifhint">{t('Making the video…')}</span>}
+      {!!guideError && !clipUrl && !making && <button type="button" className="gifhint" onClick={e => { e.stopPropagation(); setAttempt(n => n + 1) }}>{t('Retry video')}</button>}
+      {!mini && !failed && !making && !clipUrl && !guideError && (
         <span className="gifhint">
           <Icon name={playing ? 'pause' : 'play'} />{playing ? t('tap to pause') : t('tap to play')}
         </span>
@@ -115,7 +130,7 @@ async function makeCatalogGuide(ex) {
   const imageDataUrl = await stillData(imgSrc(ex))
   const made = await api('/api/guide/catalog', {
     method: 'POST',
-    timeout: 120000,
+    timeout: 150000,
     body: JSON.stringify({ id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl })
   })
   guideReady.set(ex.id, made.url)

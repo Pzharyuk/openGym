@@ -241,7 +241,7 @@ function GuideForm({ close }) {
       {workout.note && <div className="muted small" style={{ margin: '8px 0' }}>{workout.note}</div>}
       {workout.moves.map((move, index) => <div key={index} className="card" style={{ marginTop: 10 }}>
         <GuidePlayer move={move} />
-        {rendering === index && <div className="small muted" style={{ marginTop: 8 }}>{t('Rendering a 6 second guide…')}</div>}
+        {rendering === index && <div className="small muted" style={{ marginTop: 8 }}>{t('Rendering the video guide…')}</div>}
         <div style={{ fontWeight: 600, marginTop: 8 }}>{move.name}</div>
         <div className="small muted">{move.sets} × {move.reps} · {t(move.equipment)}</div>
         <input className="input" style={{ marginTop: 8 }} placeholder={t('If the clip is wrong — slower, face the camera, one push-up')} value={move.prompt || ''} onChange={e => setWorkout(current => current && { ...current, moves: current.moves.map((row, i) => i === index ? { ...row, prompt: e.target.value } : row) })} />

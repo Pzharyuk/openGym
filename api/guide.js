@@ -145,22 +145,27 @@ function guidePath(dataDir, id) {
   return path.join(dataDir, 'guides', id + '.mp4')
 }
 
+function apiError(json, fallback) {
+  const msg = json?.error?.message || json?.error || json?.message
+  return typeof msg === 'string' && msg.trim() ? msg.trim().slice(0, 180) : fallback
+}
+
 async function imagineClip(move, image) {
   const apiKey = process.env.XAI_API_KEY || ''
   if (!apiKey) return { error: 'Workout guides are unavailable right now.' }
-  const body = {
-    model: 'grok-imagine-video-1.5',
-    duration: 6,
+  const base = {
+    duration: 8,
     resolution: '720p',
     generate_audio: false,
     prompt: promptFor(move, !!image)
   }
-  if (image) body.image = { url: image }
-  let started = await postJSON('https://api.x.ai/v1/videos/generations', apiKey, body, 30000)
+  if (image) base.image = { url: image }
+  let started = await postJSON('https://api.x.ai/v1/videos/generations', apiKey, { ...base, model: 'grok-imagine-video-1.5' }, 30000)
+  if (!started.ok) started = await postJSON('https://api.x.ai/v1/videos/generations', apiKey, { ...base, model: 'grok-imagine-video-1.5-lite', duration: 6 }, 30000)
   const id = started.json && (started.json.request_id || started.json.id)
-  if (!started.ok || !id) return { error: 'Could not start the form guide.' }
+  if (!started.ok || !id) return { error: apiError(started.json, 'Could not start the form guide.') }
 
-  const deadline = Date.now() + 90000
+  const deadline = Date.now() + 100000
   let videoUrl = ''
   while (Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, 2500))
@@ -172,14 +177,18 @@ async function imagineClip(move, image) {
     const status = json && json.status
     videoUrl = json?.video?.url || json?.video_url || ''
     if (status === 'done' && videoUrl) break
-    if (status === 'failed' || status === 'expired') return { error: 'The form guide failed. You can still add the exercise.' }
+    if (status === 'failed' || status === 'expired') return { error: apiError(json, 'The form guide failed. You can still add the exercise.') }
   }
   if (!videoUrl) return { error: 'The guide is still rendering. Try again.' }
-  const file = await fetch(videoUrl, { signal: AbortSignal.timeout(30000) })
-  if (!file.ok) return { url: videoUrl }
-  const buf = Buffer.from(await file.arrayBuffer())
-  if (buf.length < 1000 || buf.length > 8000000) return { url: videoUrl }
-  return { url: videoUrl, buf }
+  try {
+    const file = await fetch(videoUrl, { signal: AbortSignal.timeout(20000) })
+    if (!file.ok) return { url: videoUrl }
+    const buf = Buffer.from(await file.arrayBuffer())
+    if (buf.length < 1000 || buf.length > 12000000) return { url: videoUrl }
+    return { url: videoUrl, buf }
+  } catch {
+    return { url: videoUrl }
+  }
 }
 
 async function renderVideo(body) {
@@ -214,12 +223,16 @@ async function catalogVideo(dataDir, body) {
   const move = { name: clip(body?.name, 80) || 'the exercise', equipment: clip(body?.equipment, 40) || 'body weight', cues: [] }
   try {
     const clipOut = await imagineClip(move, image)
-    if (clipOut.error || !clipOut.buf) return { status: 502, error: clipOut.error || 'Could not store the guide.' }
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    const tmp = file + '.part'
-    fs.writeFileSync(tmp, clipOut.buf)
-    fs.renameSync(tmp, file)
-    return { status: 200, url }
+    if (clipOut.error) return { status: 502, error: clipOut.error }
+    if (clipOut.buf) {
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      const tmp = file + '.part'
+      fs.writeFileSync(tmp, clipOut.buf)
+      fs.renameSync(tmp, file)
+      return { status: 200, url }
+    }
+    if (clipOut.url) return { status: 200, url: clipOut.url }
+    return { status: 502, error: 'Could not store the guide.' }
   } catch {
     return { status: 502, error: 'The form guide failed.' }
   }

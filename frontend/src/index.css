@@ -787,6 +787,8 @@ input.num{
 /* a custom exercise's own video (components/CustomMedia.jsx): the same box as a picture, on black
    so a clip that does not fill it is letterboxed like any player */
 .exmedia video{width:100%;height:320px;object-fit:contain;display:block;background:#000}
+.exmedia.guide{background:#000}
+.exmedia.guide video{height:min(72vh,640px);object-fit:cover}
 .exmedia.compact video{height:120px}
 .exmedia.mini video{height:84px}
 .exmedia:has(> video){background:#000}
