@@ -3,6 +3,7 @@
    AGPL-3.0-or-later, same terms as the rest of openGym. */
 import fs from 'node:fs'
 import path from 'node:path'
+import { STARTER_GUIDES } from './starter-guides.js'
 
 const PARTS = ['back', 'cardio', 'chest', 'lower arms', 'lower legs', 'neck', 'shoulders', 'upper arms', 'upper legs', 'waist']
 const GEAR = ['assisted', 'band', 'barbell', 'body weight', 'cable', 'dumbbell', 'ez barbell', 'kettlebell', 'leverage machine', 'resistance band', 'smith machine', 'weighted']
@@ -236,6 +237,29 @@ async function catalogVideo(dataDir, body) {
   } catch {
     return { status: 502, error: 'The form guide failed.' }
   }
+}
+
+export function premakeStarter(dataDir) {
+  if (!process.env.XAI_API_KEY) return
+  const media = process.env.CATALOG_MEDIA || '/catalog-media/img'
+  const pending = STARTER_GUIDES.filter(ex => {
+    try { return fs.statSync(guidePath(dataDir, ex.id)).size < 1000 } catch { return true }
+  })
+  if (!pending.length) return
+  console.log('premaking', pending.length, 'starter guides')
+  ;(async () => {
+    for (const ex of pending) {
+      try {
+        const file = path.join(media, ex.img)
+        const imageDataUrl = 'data:image/jpeg;base64,' + fs.readFileSync(file).toString('base64')
+        const result = await catalogVideo(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl })
+        console.log('premake', ex.id, result.status, result.error || 'ok')
+      } catch (e) {
+        console.log('premake', ex.id, 'failed', e?.message || e)
+      }
+    }
+    console.log('starter guides finished')
+  })()
 }
 
 export function guideRoutes({ json, readBody, readSession, dataDir }) {
