@@ -324,31 +324,41 @@ async function professionalPoster(dataDir, body) {
   try { return await job } finally { posterJobs.delete(id) }
 }
 
+async function stockDataUrl(img) {
+  const local = path.join(process.env.CATALOG_MEDIA || '/catalog-media/img', img)
+  try { return 'data:image/jpeg;base64,' + fs.readFileSync(local).toString('base64') } catch { /* the public copy is the fallback */ }
+  const origin = (process.env.ORIGIN || 'https://gym.onit.systems').replace(/\/$/, '')
+  const res = await fetch(origin + '/img/' + img, { signal: AbortSignal.timeout(20000) })
+  if (!res.ok) throw new Error('missing still')
+  return 'data:image/jpeg;base64,' + Buffer.from(await res.arrayBuffer()).toString('base64')
+}
+
 export function premakeStarter(dataDir) {
   if (!process.env.XAI_API_KEY) return
-  const media = process.env.CATALOG_MEDIA || '/catalog-media/img'
   console.log('premaking', STARTER_GUIDES.length, 'starter previews')
-  ;(async () => {
-    for (const ex of STARTER_GUIDES) {
-      try {
-        const stock = 'data:image/jpeg;base64,' + fs.readFileSync(path.join(media, ex.img)).toString('base64')
-        const hadPoster = fs.existsSync(posterPath(dataDir, ex.id))
-        const poster = await professionalPoster(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl: stock })
-        if (!hadPoster) {
-          try { fs.unlinkSync(guidePath(dataDir, ex.id)) } catch { /* the clip will be made from the new photo */ }
-        }
-        let videoReady = false
-        try { videoReady = fs.statSync(guidePath(dataDir, ex.id)).size > 1000 } catch { videoReady = false }
-        if (videoReady) { console.log('premake', ex.id, 'poster', poster.status); continue }
-        const imageDataUrl = poster.imageDataUrl || ('data:image/jpeg;base64,' + fs.readFileSync(posterPath(dataDir, ex.id)).toString('base64'))
-        const result = await catalogVideo(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl })
-        console.log('premake', ex.id, result.status, result.error || 'ok')
-      } catch (e) {
-        console.log('premake', ex.id, 'failed', e?.message || e)
+  setTimeout(() => { void runPremake(dataDir) }, 20000)
+}
+
+async function runPremake(dataDir) {
+  for (const ex of STARTER_GUIDES) {
+    try {
+      const stock = await stockDataUrl(ex.img)
+      const hadPoster = fs.existsSync(posterPath(dataDir, ex.id))
+      const poster = await professionalPoster(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl: stock })
+      if (!hadPoster) {
+        try { fs.unlinkSync(guidePath(dataDir, ex.id)) } catch { /* the clip will be made from the new photo */ }
       }
+      let videoReady = false
+      try { videoReady = fs.statSync(guidePath(dataDir, ex.id)).size > 1000 } catch { videoReady = false }
+      if (videoReady) { console.log('premake', ex.id, 'poster', poster.status); continue }
+      const imageDataUrl = poster.imageDataUrl || ('data:image/jpeg;base64,' + fs.readFileSync(posterPath(dataDir, ex.id)).toString('base64'))
+      const result = await catalogVideo(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl })
+      console.log('premake', ex.id, result.status, result.error || 'ok')
+    } catch (e) {
+      console.log('premake', ex.id, 'failed', e?.message || e)
     }
-    console.log('starter guides finished')
-  })()
+  }
+  console.log('starter guides finished')
 }
 
 export function guideRoutes({ json, readBody, readSession, dataDir }) {
