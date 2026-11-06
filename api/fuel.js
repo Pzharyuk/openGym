@@ -13,10 +13,10 @@ const ESTIMATE_HOUR = 30
 
 const PROMPT = `You estimate the nutrition of one meal from a photo and/or a short description.
 Return JSON only, no markdown, with this exact shape:
-{"name": string, "items": [{"name": string, "amount": string, "kcal": number, "protein": number, "carbs": number, "fat": number}], "kcal": number, "protein": number, "carbs": number, "fat": number, "confidence": "low"|"medium"|"high", "note": string}
+{"name": string, "items": [{"name": string, "amount": string, "kcal": number, "protein": number, "carbs": number, "fat": number, "fiber": number, "sugar": number, "satFat": number, "sodium": number, "cholesterol": number, "potassium": number}], "kcal": number, "protein": number, "carbs": number, "fat": number, "fiber": number, "sugar": number, "satFat": number, "sodium": number, "cholesterol": number, "potassium": number, "confidence": "low"|"medium"|"high", "note": string}
 Rules:
-- Macros are grams. kcal is kilocalories. Use numbers, not strings.
-- Meal kcal/protein/carbs/fat must equal the sum of items.
+- protein, carbs, fat, fiber, sugar and satFat are grams. sodium, cholesterol and potassium are milligrams. kcal is kilocalories. Use numbers, not strings.
+- Meal totals must equal the sum of the items.
 - Include only foods that are visible or described. Typical home or restaurant portions when size is unclear.
 - If the photo is ambiguous, still estimate and set confidence to low. Say the assumption in note (one sentence).
 - name is a short title, six words or fewer.
@@ -37,18 +37,39 @@ const num = (value, max, decimals = 1) => {
 
 const clip = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
+// A density score, not a medical grade. Protein, fiber and potassium raise it.
+// Sugar, saturated fat, sodium and cholesterol lower it. Computed here so a
+// model cannot invent the number.
+export function healthScore(item) {
+  const kcal = Math.max(1, Number(item?.kcal) || 0)
+  const per100 = n => ((Number(n) || 0) / kcal) * 100
+  let score = 50
+  score += Math.min(22, per100(item?.protein) * 0.8)
+  score += Math.min(14, per100(item?.fiber) * 2)
+  score += Math.min(8, per100(item?.potassium) / 50)
+  score -= Math.min(16, per100(item?.sugar) * 0.55)
+  score -= Math.min(12, per100(item?.satFat) * 1.2)
+  score -= Math.min(16, per100(item?.sodium) / 30)
+  score -= Math.min(6, per100(item?.cholesterol) / 12)
+  return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+const MACRO_G = ['protein', 'carbs', 'fat', 'fiber', 'sugar', 'satFat']
+const MACRO_MG = ['sodium', 'cholesterol', 'potassium']
+
+function macroFields(raw, kcalMax) {
+  const out = { kcal: num(raw?.kcal, kcalMax, 0) }
+  for (const key of MACRO_G) out[key] = num(raw?.[key], key === 'carbs' ? 800 : 400)
+  for (const key of MACRO_MG) out[key] = num(raw?.[key], 8000, 0)
+  return out
+}
+
 function sanitizeItem(raw) {
   if (!raw || typeof raw !== 'object') return null
   const name = clip(raw.name, 80)
   if (!name) return null
-  return {
-    name,
-    amount: clip(raw.amount, 40),
-    kcal: num(raw.kcal, 2500, 0),
-    protein: num(raw.protein, 300),
-    carbs: num(raw.carbs, 400),
-    fat: num(raw.fat, 200)
-  }
+  const fields = macroFields(raw, 2500)
+  return { name, amount: clip(raw.amount, 40), ...fields, score: healthScore(fields) }
 }
 
 function sanitizeMeal(raw) {
@@ -63,10 +84,7 @@ function sanitizeMeal(raw) {
     t: num(raw.t, 1e15, 0),
     name: clip(raw.name, 80) || 'Meal',
     items,
-    kcal: num(raw.kcal, 8000, 0),
-    protein: num(raw.protein, 500),
-    carbs: num(raw.carbs, 800),
-    fat: num(raw.fat, 400),
+    ...macroFields(raw, 8000),
     note: clip(raw.note, 240),
     source: raw.source === 'manual' ? 'manual' : 'ai',
     adjusted: raw.adjusted === true,
@@ -197,22 +215,29 @@ export function parseEstimate(text) {
       if (item) items.push(item)
     }
   }
-  const summed = items.reduce((acc, item) => ({
-    kcal: acc.kcal + item.kcal,
-    protein: acc.protein + item.protein,
-    carbs: acc.carbs + item.carbs,
-    fat: acc.fat + item.fat
-  }), { kcal: 0, protein: 0, carbs: 0, fat: 0 })
-  const kcal = num(raw.kcal, 6000, 0) || summed.kcal
-  const protein = num(raw.protein, 500) || Math.round(summed.protein * 10) / 10
-  const carbs = num(raw.carbs, 800) || Math.round(summed.carbs * 10) / 10
-  const fat = num(raw.fat, 400) || Math.round(summed.fat * 10) / 10
-  if (kcal <= 0 && !items.length) return null
+  const summed = items.reduce((acc, item) => {
+    for (const key of ['kcal', ...MACRO_G, ...MACRO_MG]) acc[key] += item[key] || 0
+    return acc
+  }, { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, satFat: 0, sodium: 0, cholesterol: 0, potassium: 0 })
+  const fields = macroFields(items.length ? summed : {
+    kcal: num(raw.kcal, 6000, 0) || summed.kcal,
+    protein: num(raw.protein, 500) || summed.protein,
+    carbs: num(raw.carbs, 800) || summed.carbs,
+    fat: num(raw.fat, 400) || summed.fat,
+    fiber: num(raw.fiber, 200) || summed.fiber,
+    sugar: num(raw.sugar, 400) || summed.sugar,
+    satFat: num(raw.satFat, 200) || summed.satFat,
+    sodium: num(raw.sodium, 12000, 0) || summed.sodium,
+    cholesterol: num(raw.cholesterol, 3000, 0) || summed.cholesterol,
+    potassium: num(raw.potassium, 12000, 0) || summed.potassium
+  }, 6000)
+  if (fields.kcal <= 0 && !items.length) return null
   const name = clip(raw.name, 80) || 'Meal'
+  const fallback = { name, amount: '', ...fields, score: healthScore(fields) }
   return {
     name,
-    items: items.length ? items : [{ name, amount: '', kcal, protein, carbs, fat }],
-    kcal, protein, carbs, fat,
+    items: items.length ? items : [fallback],
+    ...fields,
     confidence: raw.confidence === 'low' || raw.confidence === 'high' ? raw.confidence : 'medium',
     note: clip(raw.note, 240)
   }

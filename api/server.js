@@ -32,6 +32,7 @@ import {
 import { createDeviceLink, findDeviceLink, burnDeviceLink, dropDeviceLinks } from './device-link.js';
 import { createMediaStore, mediaLimits, mediaConfig, MediaError, HASH_RE } from './media.js';
 import { fuelRoutes } from './fuel.js';
+import { guideRoutes } from './guide.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -2345,6 +2346,7 @@ const routes = {
 
   /* ---------- Fuel (calories). Own file, never the workout document. ---------- */
   ...fuelRoutes({ json, readBody, readSession, dataDir: DATA }),
+  ...guideRoutes({ json, readBody, readSession }),
 
   /* ---------- photos & videos ---------- */
   // Absent, not refusing, when MEDIA_UPLOADS=0: a 404 is what a server from before the feature

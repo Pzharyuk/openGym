@@ -6,7 +6,7 @@ import { fmtDate, todayISO, uid } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
 import { api } from '../lib/api.js'
 import {
-  WATER_GLASSES, commitFuel, foodStreak, loadFuel, prevDay, pullFuel, resizePhoto
+  WATER_GLASSES, commitFuel, foodStreak, healthScore, loadFuel, prevDay, pullFuel, resizePhoto
 } from '../lib/fuel.js'
 import Icon from '../components/Icon.jsx'
 import { Button, NumberField, TextArea, TextField } from '../components/ui.jsx'
@@ -28,7 +28,47 @@ function advice(meals, target) {
 function blankDraft(name) {
   return {
     id: null, name: name || '', items: [], kcal: 0, protein: 0, carbs: 0, fat: 0,
+    fiber: 0, sugar: 0, satFat: 0, sodium: 0, cholesterol: 0, potassium: 0,
     note: '', confidence: 'medium', source: 'manual', adjusted: false, correction: ''
+  }
+}
+
+const ITEM_FIELDS = [
+  ['kcal', 'kcal', 0],
+  ['protein', 'Protein', 1],
+  ['carbs', 'Carbs', 1],
+  ['fat', 'Fat', 1],
+  ['fiber', 'Fiber', 1],
+  ['sugar', 'Sugar', 1],
+  ['satFat', 'Sat fat', 1],
+  ['sodium', 'Sodium', 0],
+  ['cholesterol', 'Chol', 0],
+  ['potassium', 'Potassium', 0]
+]
+
+function scoreLabel(score) {
+  if (score >= 80) return 'Great'
+  if (score >= 60) return 'Good'
+  if (score >= 40) return 'Fair'
+  return 'Poor'
+}
+
+function retotal(draft, items) {
+  const sumKey = key => items.reduce((n, item) => n + (Number(item[key]) || 0), 0)
+  return {
+    ...draft,
+    items,
+    kcal: Math.round(sumKey('kcal')),
+    protein: sumKey('protein'),
+    carbs: sumKey('carbs'),
+    fat: sumKey('fat'),
+    fiber: sumKey('fiber'),
+    sugar: sumKey('sugar'),
+    satFat: sumKey('satFat'),
+    sodium: Math.round(sumKey('sodium')),
+    cholesterol: Math.round(sumKey('cholesterol')),
+    potassium: Math.round(sumKey('potassium')),
+    adjusted: true
   }
 }
 
@@ -86,7 +126,8 @@ export default function Fuel() {
     setBusy(true)
     try {
       const previous = draft ? JSON.stringify({
-        name: draft.name, items: draft.items, kcal: draft.kcal, protein: draft.protein, carbs: draft.carbs, fat: draft.fat, note: draft.note
+        name: draft.name, items: draft.items, kcal: draft.kcal, protein: draft.protein, carbs: draft.carbs, fat: draft.fat,
+        fiber: draft.fiber, sugar: draft.sugar, satFat: draft.satFat, sodium: draft.sodium, cholesterol: draft.cholesterol, potassium: draft.potassium, note: draft.note
       }) : ''
       const r = await api('/api/fuel/estimate', {
         method: 'POST',
@@ -122,6 +163,12 @@ export default function Fuel() {
       protein: draft.protein || 0,
       carbs: draft.carbs || 0,
       fat: draft.fat || 0,
+      fiber: draft.fiber || 0,
+      sugar: draft.sugar || 0,
+      satFat: draft.satFat || 0,
+      sodium: draft.sodium || 0,
+      cholesterol: draft.cholesterol || 0,
+      potassium: draft.potassium || 0,
       note: draft.note || '',
       source: draft.source === 'manual' ? 'manual' : 'ai',
       adjusted: !!draft.adjusted,
@@ -179,6 +226,9 @@ export default function Fuel() {
         <Macro label={t('Protein')} value={sum(meals, 'protein')} />
         <Macro label={t('Carbs')} value={sum(meals, 'carbs')} />
         <Macro label={t('Fat')} value={sum(meals, 'fat')} />
+        <Macro label={t('Fiber')} value={sum(meals, 'fiber')} />
+        <Macro label={t('Sugar')} value={sum(meals, 'sugar')} />
+        <Macro label={t('Sodium')} value={sum(meals, 'sodium')} unit="mg" />
       </div>
       <div className="muted small" style={{ marginTop: 10 }}>{advice(meals, doc.target)}</div>
       <div className="row" style={{ gap: 6, marginTop: 8 }}>
@@ -231,18 +281,27 @@ export default function Fuel() {
     {draft && <div className="card">
       <h2 style={{ marginTop: 0 }}>{draft.id ? t('Edit meal') : t('Review before saving')}</h2>
       <TextField aria-label={t('Meal name')} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value, adjusted: true })} />
-      {!!draft.items?.length && <div className="small" style={{ marginTop: 8 }}>
-        {draft.items.map((item, i) => <div key={i} className="row between" style={{ gap: 8, padding: '4px 0' }}>
-          <span style={{ minWidth: 0 }}>{item.name}{item.amount ? ' · ' + item.amount : ''}</span>
-          <span className="muted">{item.kcal}</span>
+      {!!draft.items?.length && <div style={{ marginTop: 8 }}>
+        {draft.items.map((item, i) => <div key={i} style={{ padding: '8px 0', borderTop: '1px solid var(--sep)' }}>
+          <div className="row between" style={{ gap: 8 }}>
+            <span style={{ fontWeight: 600, minWidth: 0 }}>{item.name}{item.amount ? ' · ' + item.amount : ''}</span>
+            <span className="tag">{item.score} · {t(scoreLabel(item.score))}</span>
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            {ITEM_FIELDS.map(([key, label]) => <Field key={key} label={t(label)} value={item[key]} onChange={n => {
+              const items = draft.items.map((row, index) => {
+                if (index !== i) return row
+                const next = { ...row, [key]: n }
+                return { ...next, score: healthScore(next) }
+              })
+              setDraft(retotal(draft, items))
+            }} />)}
+          </div>
         </div>)}
       </div>}
-      <div className="row" style={{ gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
-        <Field label={t('kcal')} value={draft.kcal} onChange={n => setDraft({ ...draft, kcal: n, adjusted: true })} />
-        <Field label={t('Protein')} value={draft.protein} onChange={n => setDraft({ ...draft, protein: n, adjusted: true })} />
-        <Field label={t('Carbs')} value={draft.carbs} onChange={n => setDraft({ ...draft, carbs: n, adjusted: true })} />
-        <Field label={t('Fat')} value={draft.fat} onChange={n => setDraft({ ...draft, fat: n, adjusted: true })} />
-      </div>
+      {!draft.items?.length && <div className="row" style={{ gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+        {ITEM_FIELDS.map(([key, label]) => <Field key={key} label={t(label)} value={draft[key]} onChange={n => setDraft({ ...draft, [key]: n, adjusted: true })} />)}
+      </div>}
       {draft.note && <div className="muted small" style={{ marginTop: 8 }}>{draft.note}</div>}
       <TextField aria-label={t('What the estimate got wrong')} placeholder={t('What it got wrong — half the rice, no sauce')} value={draft.correction || ''} onChange={e => setDraft({ ...draft, correction: e.target.value })} style={{ marginTop: 8 }} />
       <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
@@ -258,7 +317,8 @@ export default function Fuel() {
       {meals.map(meal => <div key={meal.id} className="row between" style={{ gap: 8, padding: '8px 0', borderTop: '1px solid var(--sep)' }}>
         <button type="button" onClick={() => setDraft({ ...meal, correction: '' })} style={{ background: 'none', border: 'none', color: 'inherit', textAlign: 'start', padding: 0, cursor: 'pointer', minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 600 }}>{meal.name}{meal.adjusted ? ' · ' + t('adjusted') : ''}</div>
-          <div className="small muted">{round(meal.kcal)} kcal · {t('Protein')} {round(meal.protein)}g · {t('Carbs')} {round(meal.carbs)}g · {t('Fat')} {round(meal.fat)}g</div>
+          <div className="small muted">{round(meal.kcal)} kcal · {t('Protein')} {round(meal.protein)}g · {t('Carbs')} {round(meal.carbs)}g · {t('Fat')} {round(meal.fat)}g · {t('Fiber')} {round(meal.fiber)}g</div>
+          {!!meal.items?.length && <div className="small muted">{meal.items.map(item => item.name + ' ' + item.score).join(' · ')}</div>}
         </button>
         <button className="iconbtn" aria-label={t('Delete')} onClick={() => removeMeal(meal)}><Icon name="trash" /></button>
       </div>)}
@@ -273,8 +333,8 @@ function nextDay(iso) {
   return next > todayISO() ? todayISO() : next
 }
 
-function Macro({ label, value }) {
-  return <div><div className="small muted">{label}</div><div style={{ fontWeight: 600 }}>{round(value)}g</div></div>
+function Macro({ label, value, unit = 'g' }) {
+  return <div><div className="small muted">{label}</div><div style={{ fontWeight: 600 }}>{round(value)}{unit}</div></div>
 }
 
 function Field({ label, value, onChange }) {

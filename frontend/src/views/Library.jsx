@@ -9,6 +9,7 @@ import { fmtNum, exCount } from '../lib/format.js'
 import { t, exerciseNameFor, exerciseNameClass } from '../lib/i18n.js'
 import { Thumb } from '../components/Media.jsx'
 import { exerciseDetailSheet, addToRoutineSheet, customExSheet } from '../sheets.jsx'
+import { guideSheet } from '../components/GuideSheet.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { tappable, useRevealActiveChip } from '../lib/use-sheet-keyboard.js'
@@ -63,6 +64,10 @@ export default function Library() {
       {eqOpts.map(x => <button key={x} className={'chip' + (eqOn === x ? ' on' : '')} onClick={() => { setEq(x); setShown(40) }}>{t(x)}</button>)}
     </div>}
     <div className="list">
+      <div className="item" {...tappable(() => guideSheet())}>
+        <div className="thumb thumb-x"><Icon name="camera" /></div>
+        <div className="grow"><div className="tt">{t('Build from a photo or video')}</div><div className="ss">{t('Imagine makes a looping form guide')}</div></div><Icon name="plus" className="chev" />
+      </div>
       <div className="item" {...tappable(() => customExSheet(null, ex => exerciseDetailSheet(ex), q.trim()))}>
         <div className="thumb thumb-x"><Icon name="sparkles" /></div>
         <div className="grow"><div className="tt">{t('Create your own exercise')}</div><div className="ss">{t('name + body part, and a photo or video if you like')}</div></div><Icon name="plus" className="chev" />

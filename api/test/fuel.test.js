@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { mergeFuel, parseEstimate, readFuel, writeFuel } from '../fuel.js'
+import { mergeFuel, parseEstimate, healthScore, readFuel, writeFuel } from '../fuel.js'
 
 test('a delete tombstone drops the older copy and a newer edit wins', () => {
   const server = { meals: [{ id: 'a', day: '2026-11-05', t: 10, name: 'Bowl', kcal: 500, protein: 30, carbs: 40, fat: 12, items: [] }] }
@@ -32,7 +32,16 @@ test('parseEstimate sums a fenced model reply and drops junk', () => {
   assert.equal(estimate.name, 'Eggs')
   assert.equal(estimate.kcal, 140)
   assert.equal(estimate.items.length, 1)
+  assert.equal(estimate.items[0].fiber, 0)
+  assert.equal(typeof estimate.items[0].score, 'number')
   assert.equal(parseEstimate('no json here'), null)
+})
+
+test('health score favors protein and fiber over sugar and sodium', () => {
+  const beans = healthScore({ kcal: 180, protein: 12, fiber: 8, sugar: 1, satFat: 0.5, sodium: 40, cholesterol: 0, potassium: 400 })
+  const soda = healthScore({ kcal: 180, protein: 0, fiber: 0, sugar: 40, satFat: 0, sodium: 40, cholesterol: 0, potassium: 0 })
+  assert.ok(beans > soda)
+  assert.ok(beans <= 100 && soda >= 0)
 })
 
 test('fuel file round-trip never touches a workout state file', () => {

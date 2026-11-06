@@ -11,6 +11,7 @@ import { Button } from '../components/ui.jsx'
 import { tappable } from '../lib/use-sheet-keyboard.js'
 import { glyphOf } from '../lib/glyphs.js'
 import { todayFuelSummary } from '../lib/fuel.js'
+import { guideSheet } from '../components/GuideSheet.jsx'
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
 export default function Home() {
@@ -131,6 +132,19 @@ export default function Home() {
         </div>
       </div>
     )}
+
+    <div className="card tappable" style={{ cursor: 'pointer' }} {...tappable(() => guideSheet())}>
+      <div className="row between">
+        <div className="row" style={{ gap: 9 }}>
+          <span className="lrow-i" style={{ background: 'var(--accent, var(--orange))' }}><Icon name="camera" /></span>
+          <div>
+            <div className="lbl2">{t('From a photo')}</div>
+            <div className="ttl">{t('Build a workout')}</div>
+          </div>
+        </div>
+        <Icon name="chevronRight" className="chev" />
+      </div>
+    </div>
 
     <div className="card tappable" style={{ cursor: 'pointer' }} {...tappable(() => nav('/fuel'))}>
       <div className="row between">

@@ -15,19 +15,46 @@ const num = (value, max, decimals = 1) => {
 }
 const text = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
+const GRAMS = ['protein', 'carbs', 'fat', 'fiber', 'sugar', 'satFat']
+const MG = ['sodium', 'cholesterol', 'potassium']
+
+export function healthScore(item) {
+  const kcal = Math.max(1, Number(item?.kcal) || 0)
+  const per100 = n => ((Number(n) || 0) / kcal) * 100
+  let score = 50
+  score += Math.min(22, per100(item?.protein) * 0.8)
+  score += Math.min(14, per100(item?.fiber) * 2)
+  score += Math.min(8, per100(item?.potassium) / 50)
+  score -= Math.min(16, per100(item?.sugar) * 0.55)
+  score -= Math.min(12, per100(item?.satFat) * 1.2)
+  score -= Math.min(16, per100(item?.sodium) / 30)
+  score -= Math.min(6, per100(item?.cholesterol) / 12)
+  return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+function macrosOf(raw, kcalMax) {
+  const out = { kcal: num(raw?.kcal, kcalMax, 0) }
+  for (const key of GRAMS) out[key] = num(raw?.[key], key === 'carbs' ? 800 : 400)
+  for (const key of MG) out[key] = num(raw?.[key], 8000, 0)
+  return out
+}
+
+function sanitizeItem(raw) {
+  const name = text(raw?.name, 80)
+  if (!name) return null
+  const fields = macrosOf(raw, 2500)
+  return { name, amount: text(raw?.amount, 40), ...fields, score: healthScore(fields) }
+}
+
 function sanitizeMeal(raw) {
   if (!raw || typeof raw !== 'object') return null
   const id = text(raw.id, 40)
   const day = text(raw.day, 10)
   if (!id || !DAY.test(day)) return null
-  const items = Array.isArray(raw.items) ? raw.items.slice(0, 12).map(row => {
-    const name = text(row?.name, 80)
-    if (!name) return null
-    return { name, amount: text(row?.amount, 40), kcal: num(row?.kcal, 2500, 0), protein: num(row?.protein, 300), carbs: num(row?.carbs, 400), fat: num(row?.fat, 200) }
-  }).filter(Boolean) : []
+  const items = Array.isArray(raw.items) ? raw.items.slice(0, 12).map(sanitizeItem).filter(Boolean) : []
   return {
     id, day, t: num(raw.t, 1e15, 0), name: text(raw.name, 80) || 'Meal', items,
-    kcal: num(raw.kcal, 8000, 0), protein: num(raw.protein, 500), carbs: num(raw.carbs, 800), fat: num(raw.fat, 400),
+    ...macrosOf(raw, 8000),
     note: text(raw.note, 240), source: raw.source === 'manual' ? 'manual' : 'ai', adjusted: raw.adjusted === true,
     confidence: raw.confidence === 'low' || raw.confidence === 'high' ? raw.confidence : 'medium'
   }
