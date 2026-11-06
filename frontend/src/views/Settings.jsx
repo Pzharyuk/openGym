@@ -361,9 +361,21 @@ export default function Settings() {
           options={[{ value: 'kg', label: 'kg' }, { value: 'lb', label: 'lb' }]}
           value={S.unit} onChange={v => switchUnit(v)} />
       </Row>
-      <Row icon="figureStrength" iconTint="var(--teal)" title={t('Height')} subtitle={S.unit === 'lb' ? t('Inches. Fuel and Measure use this.') : t('Centimeters. Fuel and Measure use this.')}>
-        <NumberField aria-label={t('Height')} decimal={false} value={shownHeight(S)} onChange={n => update(s => { s.heightCm = n ? (s.unit === 'lb' ? Math.round(n * 2.54 * 10) / 10 : n) : 0 })} style={{ width: 72 }} />
-      </Row>
+      <div className="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+        <div className="row between" style={{ gap: 8 }}>
+          <span className="lrow-m">
+            <span className="lrow-t">{t('Height')}</span>
+            <span className="lrow-s">{t('Feet and inches, or centimeters. Fuel and Measure use this.')}</span>
+          </span>
+          <Segmented className="seg-inline"
+            options={[{ value: 'ft', label: t('ft') }, { value: 'cm', label: 'cm' }]}
+            value={heightMode(S)} onChange={v => update(s => { s.heightUnit = v })} />
+        </div>
+        {heightMode(S) === 'ft' ? <FeetInches S={S} update={update} /> : <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+          <NumberField aria-label={t('Centimeters')} decimal={false} value={S.heightCm ? Math.round(S.heightCm) : 0} onChange={n => update(s => { s.heightCm = n || 0 })} style={{ width: 84 }} />
+          <span className="small muted">cm</span>
+        </div>}
+      </div>
       <Row icon="clock" iconTint="var(--teal)" title={t('Age')} subtitle={t('Blank uses 30 for the calorie target.')}>
         <NumberField aria-label={t('Age')} decimal={false} value={S.age || 0} onChange={n => update(s => { s.age = n && n < 120 ? n : 0 })} style={{ width: 64 }} />
       </Row>
@@ -947,8 +959,28 @@ function RegisterInline({ close, setUser, pushState, pullState, toast }) {
   </>
 }
 
-function shownHeight(S) {
-  const cm = Number(S.heightCm) || 0
-  if (!cm) return 0
-  return S.unit === 'lb' ? Math.round(cm / 2.54) : Math.round(cm)
+function heightMode(S) {
+  if (S.heightUnit === 'ft' || S.heightUnit === 'cm') return S.heightUnit
+  return S.unit === 'lb' ? 'ft' : 'cm'
+}
+
+function heightParts(cm) {
+  const total = Math.round((Number(cm) || 0) / 2.54)
+  const feet = Math.floor(total / 12)
+  return { feet, inches: total - feet * 12 }
+}
+
+function cmFromFeet(feet, inches) {
+  const total = Math.max(0, (Number(feet) || 0) * 12 + Math.min(11, Number(inches) || 0))
+  return total ? Math.round(total * 2.54 * 10) / 10 : 0
+}
+
+function FeetInches({ S, update }) {
+  const parts = heightParts(S.heightCm)
+  return <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+    <NumberField aria-label={t('Feet')} decimal={false} value={parts.feet} onChange={n => update(s => { const cur = heightParts(s.heightCm); s.heightCm = cmFromFeet(n, cur.inches) })} style={{ width: 64 }} />
+    <span className="small muted">ft</span>
+    <NumberField aria-label={t('Inches')} decimal={false} value={parts.inches} onChange={n => update(s => { const cur = heightParts(s.heightCm); s.heightCm = cmFromFeet(cur.feet, n) })} style={{ width: 64 }} />
+    <span className="small muted">in</span>
+  </div>
 }
