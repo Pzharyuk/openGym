@@ -34,16 +34,16 @@ function blankDraft(name) {
 }
 
 const ITEM_FIELDS = [
-  ['kcal', 'kcal', 0],
-  ['protein', 'Protein', 1],
-  ['carbs', 'Carbs', 1],
-  ['fat', 'Fat', 1],
-  ['fiber', 'Fiber', 1],
-  ['sugar', 'Sugar', 1],
-  ['satFat', 'Sat fat', 1],
-  ['sodium', 'Sodium', 0],
-  ['cholesterol', 'Chol', 0],
-  ['potassium', 'Potassium', 0]
+  ['kcal', 'kcal', ''],
+  ['protein', 'Protein', 'g'],
+  ['carbs', 'Carbs', 'g'],
+  ['fat', 'Fat', 'g'],
+  ['fiber', 'Fiber', 'g'],
+  ['sugar', 'Sugar', 'g'],
+  ['satFat', 'Sat fat', 'g'],
+  ['sodium', 'Sodium', 'mg'],
+  ['cholesterol', 'Chol', 'mg'],
+  ['potassium', 'Potassium', 'mg']
 ]
 
 function scoreLabel(score) {
@@ -51,6 +51,29 @@ function scoreLabel(score) {
   if (score >= 60) return 'Good'
   if (score >= 40) return 'Fair'
   return 'Poor'
+}
+
+function scoreColor(score) {
+  if (score >= 80) return 'var(--green)'
+  if (score >= 60) return 'var(--blue)'
+  if (score >= 40) return 'var(--orange)'
+  return 'var(--red)'
+}
+
+function macroLine(item) {
+  const n = key => Math.round(Number(item[key]) || 0)
+  return [
+    n('kcal') + ' kcal',
+    t('Protein') + ' ' + n('protein') + 'g',
+    t('Carbs') + ' ' + n('carbs') + 'g',
+    t('Fat') + ' ' + n('fat') + 'g',
+    t('Fiber') + ' ' + n('fiber') + 'g',
+    t('Sugar') + ' ' + n('sugar') + 'g',
+    t('Sat fat') + ' ' + n('satFat') + 'g',
+    t('Sodium') + ' ' + n('sodium') + 'mg',
+    t('Chol') + ' ' + n('cholesterol') + 'mg',
+    t('Potassium') + ' ' + n('potassium') + 'mg'
+  ].join(' · ')
 }
 
 function retotal(draft, items) {
@@ -229,6 +252,9 @@ export default function Fuel() {
         <Macro label={t('Fiber')} value={sum(meals, 'fiber')} />
         <Macro label={t('Sugar')} value={sum(meals, 'sugar')} />
         <Macro label={t('Sodium')} value={sum(meals, 'sodium')} unit="mg" />
+        <Macro label={t('Sat fat')} value={sum(meals, 'satFat')} />
+        <Macro label={t('Chol')} value={sum(meals, 'cholesterol')} unit="mg" />
+        <Macro label={t('Potassium')} value={sum(meals, 'potassium')} unit="mg" />
       </div>
       <div className="muted small" style={{ marginTop: 10 }}>{advice(meals, doc.target)}</div>
       <div className="row" style={{ gap: 6, marginTop: 8 }}>
@@ -285,10 +311,10 @@ export default function Fuel() {
         {draft.items.map((item, i) => <div key={i} style={{ padding: '8px 0', borderTop: '1px solid var(--sep)' }}>
           <div className="row between" style={{ gap: 8 }}>
             <span style={{ fontWeight: 600, minWidth: 0 }}>{item.name}{item.amount ? ' · ' + item.amount : ''}</span>
-            <span className="tag">{item.score} · {t(scoreLabel(item.score))}</span>
+            <span className="tag" style={{ color: scoreColor(item.score), fontWeight: 700 }}>{item.score} · {t(scoreLabel(item.score))}</span>
           </div>
           <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-            {ITEM_FIELDS.map(([key, label]) => <Field key={key} label={t(label)} value={item[key]} onChange={n => {
+            {ITEM_FIELDS.map(([key, label, unit]) => <Field key={key} label={t(label) + (unit ? ' ' + unit : '')} value={item[key]} onChange={n => {
               const items = draft.items.map((row, index) => {
                 if (index !== i) return row
                 const next = { ...row, [key]: n }
@@ -300,7 +326,7 @@ export default function Fuel() {
         </div>)}
       </div>}
       {!draft.items?.length && <div className="row" style={{ gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
-        {ITEM_FIELDS.map(([key, label]) => <Field key={key} label={t(label)} value={draft[key]} onChange={n => setDraft({ ...draft, [key]: n, adjusted: true })} />)}
+        {ITEM_FIELDS.map(([key, label, unit]) => <Field key={key} label={t(label) + (unit ? ' ' + unit : '')} value={draft[key]} onChange={n => setDraft({ ...draft, [key]: n, adjusted: true })} />)}
       </div>}
       {draft.note && <div className="muted small" style={{ marginTop: 8 }}>{draft.note}</div>}
       <TextField aria-label={t('What the estimate got wrong')} placeholder={t('What it got wrong — half the rice, no sauce')} value={draft.correction || ''} onChange={e => setDraft({ ...draft, correction: e.target.value })} style={{ marginTop: 8 }} />
@@ -317,8 +343,14 @@ export default function Fuel() {
       {meals.map(meal => <div key={meal.id} className="row between" style={{ gap: 8, padding: '8px 0', borderTop: '1px solid var(--sep)' }}>
         <button type="button" onClick={() => setDraft({ ...meal, correction: '' })} style={{ background: 'none', border: 'none', color: 'inherit', textAlign: 'start', padding: 0, cursor: 'pointer', minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 600 }}>{meal.name}{meal.adjusted ? ' · ' + t('adjusted') : ''}</div>
-          <div className="small muted">{round(meal.kcal)} kcal · {t('Protein')} {round(meal.protein)}g · {t('Carbs')} {round(meal.carbs)}g · {t('Fat')} {round(meal.fat)}g · {t('Fiber')} {round(meal.fiber)}g</div>
-          {!!meal.items?.length && <div className="small muted">{meal.items.map(item => item.name + ' ' + item.score).join(' · ')}</div>}
+          <div className="small muted">{macroLine(meal)}</div>
+          {!!meal.items?.length && meal.items.map((item, index) => <div key={item.name + index} style={{ marginTop: 8 }}>
+            <div className="row between" style={{ gap: 8 }}>
+              <span style={{ fontWeight: 600 }}>{item.name}{item.amount ? ' · ' + item.amount : ''}</span>
+              <span style={{ color: scoreColor(item.score), fontWeight: 700 }}>{t('Health')} {item.score} · {t(scoreLabel(item.score))}</span>
+            </div>
+            <div className="small muted">{macroLine(item)}</div>
+          </div>)}
         </button>
         <button className="iconbtn" aria-label={t('Delete')} onClick={() => removeMeal(meal)}><Icon name="trash" /></button>
       </div>)}

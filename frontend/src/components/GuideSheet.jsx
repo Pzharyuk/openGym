@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { api } from '../lib/api.js'
@@ -56,6 +56,46 @@ async function framesFrom(file) {
   } finally {
     URL.revokeObjectURL(url)
   }
+}
+
+function GuidePlayer({ move }) {
+  const ref = useRef(null)
+  const cues = move.cues || []
+  const [step, setStep] = useState(0)
+  const src = move.videoData || move.videoUrl
+
+  useEffect(() => {
+    const video = ref.current
+    if (!video || !cues.length) return
+    const onTime = () => {
+      const duration = video.duration
+      if (!Number.isFinite(duration) || duration <= 0) return
+      const index = Math.min(cues.length - 1, Math.floor((video.currentTime / duration) * cues.length))
+      setStep(index)
+    }
+    video.addEventListener('timeupdate', onTime)
+    return () => video.removeEventListener('timeupdate', onTime)
+  }, [src, cues.length])
+
+  const jump = index => {
+    setStep(index)
+    const video = ref.current
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return
+    video.currentTime = (index / cues.length) * video.duration
+    video.play().catch(() => {})
+  }
+
+  if (!src && !cues.length) return null
+  return <div>
+    {src && <video ref={ref} key={src} src={src} controls autoPlay muted loop playsInline style={{ width: '100%', maxHeight: 360, borderRadius: 12, background: '#000' }} />}
+    {!!cues.length && <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+      {cues.map((cue, index) => <button key={cue} type="button" onClick={() => jump(index)} style={{
+        textAlign: 'start', border: 'none', borderRadius: 10, padding: '8px 10px', cursor: 'pointer',
+        background: index === step ? 'var(--acc)' : 'var(--surface-3)',
+        color: index === step ? 'var(--on-acc)' : 'inherit', fontWeight: index === step ? 650 : 500
+      }}>{index + 1}. {cue}</button>)}
+    </div>}
+  </div>
 }
 
 function repsConfig(id, move) {
@@ -184,7 +224,7 @@ function GuideForm({ close }) {
 
   return <>
     <h3>{t('Workout from a photo')}</h3>
-    <div className="muted small" style={{ marginBottom: 12 }}>{t('A photo or a short video becomes the exercises, and Imagine makes a looping form guide for each one.')}</div>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('A photo or a short video becomes the exercises. Imagine makes a form clip, and each cue jumps to that part of the rep.')}</div>
     {!workout && <>
       <input className="input" placeholder={t('Optional note — hip thrust, or a push day')} value={note} onChange={e => setNote(e.target.value)} />
       <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -199,11 +239,10 @@ function GuideForm({ close }) {
       <input className="input" value={workout.name} onChange={e => setWorkout({ ...workout, name: e.target.value })} />
       {workout.note && <div className="muted small" style={{ margin: '8px 0' }}>{workout.note}</div>}
       {workout.moves.map((move, index) => <div key={index} className="card" style={{ marginTop: 10 }}>
-        {(move.videoData || move.videoUrl) && <video src={move.videoData || move.videoUrl} controls autoPlay muted loop playsInline style={{ width: '100%', maxHeight: 320, borderRadius: 12, background: '#000' }} />}
+        <GuidePlayer move={move} />
         {rendering === index && <div className="small muted" style={{ marginTop: 8 }}>{t('Rendering a 6 second guide…')}</div>}
         <div style={{ fontWeight: 600, marginTop: 8 }}>{move.name}</div>
         <div className="small muted">{move.sets} × {move.reps} · {t(move.equipment)}</div>
-        {!!move.cues?.length && <div className="small" style={{ marginTop: 6 }}>{move.cues.join(' · ')}</div>}
         <Button size="sm" variant="ghost" disabled={rendering >= 0} onClick={() => guide(index)}>{move.videoUrl || move.videoData ? t('Redo guide') : t('Form guide')}</Button>
       </div>)}
       <div style={{ height: 12 }} />
