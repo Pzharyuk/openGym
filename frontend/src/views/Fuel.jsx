@@ -279,10 +279,10 @@ export default function Fuel() {
         <span className="small">{t(streak === 1 ? '{0} day logged' : '{0} days logged', streak)}</span>
       </div>
       <div className="row" style={{ gap: 10, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <label className="small muted">{unit === 'lb' ? t('Height in') : t('Height cm')}
+        <label className="small muted">{t('Height')} ({unit === 'lb' ? 'in' : 'cm'})
           <NumberField aria-label={t('Height')} value={heightField(doc.target.heightCm, unit)} decimal={false} onChange={n => writePlan({ heightCm: n ? (unit === 'lb' ? n * 2.54 : n) : 0, locked: false })} style={{ width: 64, marginInlineStart: 6 }} />
         </label>
-        <label className="small muted">{unit === 'lb' ? t('Lose lb') : t('Lose kg')}
+        <label className="small muted">{t('Lose')} ({unit})
           <NumberField aria-label={t('Weight to lose')} value={lossField(doc.target.lossLb, unit)} decimal={false} onChange={n => writePlan({ lossLb: n ? (unit === 'lb' ? n : n * 2.2046226218) : 0, locked: false })} style={{ width: 56, marginInlineStart: 6 }} />
         </label>
         <label className="small muted">{t('Age')}

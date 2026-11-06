@@ -76,7 +76,8 @@ export default function Measure() {
           imageDataUrl: photo || undefined,
           note: note.trim() || undefined,
           correction: correction.trim() || undefined,
-          previous: previous || undefined
+          previous: previous || undefined,
+          unit: unit === 'lb' ? 'lb' : 'kg'
         })
       })
       setDraft({ ...blank(''), ...r.reading, photo, adjusted: !!correction, correction: '' })
@@ -137,7 +138,9 @@ export default function Measure() {
             <span className="lrow-i" style={{ background: on ? 'var(--orange)' : 'var(--surface-3)' }}><Icon name="medal" /></span>
             <div>
               <div style={{ fontWeight: 650 }}>{t(name)}</div>
-              <div className="small muted">{t(detail)}</div>
+              <div className="small muted">{id === 'waist'
+              ? (unit === 'lb' ? t('Waist is at least 0.8 in under the first reading.') : t('Waist is at least 2 cm under the first reading.'))
+              : t(detail)}</div>
             </div>
           </div>
         })}
@@ -147,7 +150,7 @@ export default function Measure() {
     <div className="card">
       <h2 style={{ marginTop: 0 }}>{t('New check-in')}</h2>
       <div className="muted small" style={{ marginBottom: 8 }}>{t('A photo is enough. The teacher guesses the tape numbers. You can fix any of them before saving.')}</div>
-      <TextArea rows={2} value={note} placeholder={t('Optional — 180 cm, or my waist was 84')} onChange={e => setNote(e.target.value)} />
+      <TextArea rows={2} value={note} placeholder={unit === 'lb' ? t('Optional — 5 ft 11, or my waist was 33 in') : t('Optional — 180 cm, or my waist was 84')} onChange={e => setNote(e.target.value)} />
       <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <Button size="sm" icon="camera" onClick={() => fileRef.current?.click()}>{photo ? t('Photo added') : t('Progress photo')}</Button>
         <input ref={fileRef} type="file" accept="image/*" capture="user" hidden onChange={onPhoto} />
@@ -174,7 +177,7 @@ export default function Measure() {
           <NumberField aria-label={t(label)} value={Math.round(toShow(key, draft[key], unit) * 10) / 10} onChange={n => setDraft({ ...draft, [key]: fromShow(key, n || 0, unit), adjusted: true })} style={{ width: 72, marginInlineStart: 6 }} />
         </label>)}
       </div>
-      <TextField aria-label={t('What the teacher got wrong')} placeholder={t('Waist is 82, not 88')} value={draft.correction || ''} onChange={e => setDraft({ ...draft, correction: e.target.value })} style={{ marginTop: 8 }} />
+      <TextField aria-label={t('What the teacher got wrong')} placeholder={unit === 'lb' ? t('Waist is 32 in, not 35') : t('Waist is 82 cm, not 88')} value={draft.correction || ''} onChange={e => setDraft({ ...draft, correction: e.target.value })} style={{ marginTop: 8 }} />
       <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         <Button variant="primary" icon="check" onClick={save}>{t('Save check-in')}</Button>
         <Button size="sm" icon="sparkles" disabled={busy || !draft.correction?.trim()} onClick={() => teach(draft.correction)}>{t('Fix with the teacher')}</Button>

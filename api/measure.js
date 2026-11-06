@@ -196,7 +196,11 @@ async function teach(body) {
   if (!image && !note && !correction) return { status: 400, error: 'Add a photo, or describe what you measured.' }
   const apiKey = process.env.XAI_API_KEY || ''
   if (!apiKey) return { status: 503, error: 'The measuring teacher is unavailable right now.' }
+  const unit = body?.unit === 'lb' ? 'lb' : 'kg'
   const parts = [PROMPT]
+  parts.push(unit === 'lb'
+    ? 'Write lesson, steps, and note in pounds and inches. The JSON numbers themselves stay centimeters and kilograms.'
+    : 'Write lesson, steps, and note in kilograms and centimeters. The JSON numbers are those units too.')
   if (note) parts.push('Note: ' + note)
   if (previous && correction) {
     parts.push('Previous check-in JSON:\n' + previous)
