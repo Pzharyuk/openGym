@@ -130,6 +130,29 @@ function stillData(src) {
 }
 
 const posterReady = new Map()
+const posterPending = new Map()
+const posterWait = []
+let posterBusy = 0
+
+function schedulePoster(ex) {
+  if (posterReady.has(ex.id)) return Promise.resolve(posterReady.get(ex.id))
+  if (posterPending.has(ex.id)) return posterPending.get(ex.id)
+  const job = new Promise((resolve, reject) => {
+    const start = () => {
+      posterBusy += 1
+      ensurePoster(ex).then(resolve, reject).finally(() => {
+        posterBusy -= 1
+        const next = posterWait.shift()
+        if (next) next()
+      })
+    }
+    if (posterBusy < 2) start()
+    else posterWait.push(start)
+  })
+  posterPending.set(ex.id, job)
+  job.finally(() => { if (posterPending.get(ex.id) === job) posterPending.delete(ex.id) })
+  return job
+}
 
 async function ensurePoster(ex) {
   if (posterReady.has(ex.id)) return posterReady.get(ex.id)
@@ -179,8 +202,18 @@ export function Thumb(p) {
   return p.ex?.custom ? <CustomThumb {...p} /> : <BuiltinThumb {...p} />
 }
 function BuiltinThumb({ ex }) {
-  const src = ex.img ? imgSrc(ex) : null
+  const userId = useStore(s => s?.user?.id || '')
+  const [poster, setPoster] = useState('')
   const [broken, setBroken] = useState(null)
+  useEffect(() => {
+    if (!userId || !ex?.img) return
+    let gone = false
+    const known = posterReady.get(ex.id)
+    if (known) { setPoster(known); return }
+    schedulePoster(ex).then(url => { if (!gone && url) setPoster(url) }).catch(() => {})
+    return () => { gone = true }
+  }, [userId, ex?.id, ex?.img])
+  const src = poster || (ex.img ? imgSrc(ex) : null)
   if (!src || broken === src) return <div className="thumb thumb-x"><Icon name="dumbbell" /></div>
-  return <img className="thumb" loading="lazy" decoding="async" draggable={false} src={src} alt="" onError={() => setBroken(src)} />
+  return <img className="thumb" loading="lazy" decoding="async" draggable={false} src={src} alt="" style={poster ? { background: '#111' } : undefined} onError={() => setBroken(src)} />
 }
