@@ -25,7 +25,6 @@ function BuiltinMedia({ ex, id, compact, minimizable }) {
   const [failed, setFailed] = useState(null)
   const [poster, setPoster] = useState('')
   const [clipUrl, setClipUrl] = useState('')
-  const [making, setMaking] = useState(false)
   const [guideError, setGuideError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const videoRef = useRef(null)
@@ -49,8 +48,7 @@ function BuiltinMedia({ ex, id, compact, minimizable }) {
       if (!ex.gif) return
       const clip = await lookupClip(ex).catch(() => '')
       if (gone) return
-      if (clip) { setClipUrl(clip); setMaking(false) }
-      else setMaking(true)
+      if (clip) setClipUrl(clip)
     }
     pull()
     const timer = setInterval(pull, 20000)
@@ -85,9 +83,8 @@ function BuiltinMedia({ ex, id, compact, minimizable }) {
           <Icon name={mini ? 'expand' : 'minimize'} />{mini ? t('Expand') : t('Minimize')}
         </button>
       )}
-      {making && !clipUrl && <span className="gifhint">{t('Video guide is on the way')}</span>}
-      {!!guideError && !clipUrl && !making && <button type="button" className="gifhint" onClick={e => { e.stopPropagation(); setAttempt(n => n + 1) }}>{t('Retry video')}</button>}
-      {!mini && !failed && !making && !clipUrl && !poster && !guideError && (
+      {!!guideError && !clipUrl && <button type="button" className="gifhint" onClick={e => { e.stopPropagation(); setAttempt(n => n + 1) }}>{t('Retry video')}</button>}
+      {!mini && !failed && !clipUrl && !poster && !guideError && (
         <span className="gifhint">
           <Icon name={playing ? 'pause' : 'play'} />{playing ? t('tap to pause') : t('tap to play')}
         </span>
