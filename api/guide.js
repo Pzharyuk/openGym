@@ -3,7 +3,8 @@
    AGPL-3.0-or-later, same terms as the rest of openGym. */
 import fs from 'node:fs'
 import path from 'node:path'
-import { STARTER_GUIDES } from './starter-guides.js'
+
+const CATALOG = JSON.parse(fs.readFileSync(new URL('./catalog-guides.json', import.meta.url)))
 
 const PARTS = ['back', 'cardio', 'chest', 'lower arms', 'lower legs', 'neck', 'shoulders', 'upper arms', 'upper legs', 'waist']
 const GEAR = ['assisted', 'band', 'barbell', 'body weight', 'cable', 'dumbbell', 'ez barbell', 'kettlebell', 'leverage machine', 'resistance band', 'smith machine', 'weighted']
@@ -371,30 +372,37 @@ async function stockDataUrl(img) {
 
 export function premakeStarter(dataDir) {
   if (!process.env.XAI_API_KEY) return
-  console.log('premaking', STARTER_GUIDES.length, 'starter previews')
+  console.log('premaking', CATALOG.length, 'exercise guides')
   setTimeout(() => { void runPremake(dataDir) }, 20000)
 }
 
 async function runPremake(dataDir) {
-  for (const ex of STARTER_GUIDES) {
+  let done = 0
+  for (const ex of CATALOG) {
     try {
-      const stock = await stockDataUrl(ex.img)
       const hadPoster = fs.existsSync(posterPath(dataDir, ex.id))
-      const poster = await professionalPoster(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, muscle: ex.m, imageDataUrl: stock })
+      let imageDataUrl = ''
       if (!hadPoster) {
-        try { fs.unlinkSync(guidePath(dataDir, ex.id)) } catch { /* the clip will be made from the new photo */ }
+        const stock = await stockDataUrl(ex.img)
+        const poster = await professionalPoster(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, muscle: ex.m, imageDataUrl: stock })
+        if (poster.error || poster.status >= 400) throw new Error(poster.error || 'poster')
+        imageDataUrl = poster.imageDataUrl || ''
       }
       let videoReady = false
       try { videoReady = fs.statSync(guidePath(dataDir, ex.id)).size > 1000 } catch { videoReady = false }
-      if (videoReady) { console.log('premake', ex.id, 'poster', poster.status); continue }
-      const imageDataUrl = poster.imageDataUrl || ('data:image/jpeg;base64,' + fs.readFileSync(posterPath(dataDir, ex.id)).toString('base64'))
-      const result = await catalogVideo(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, muscle: ex.m, imageDataUrl })
-      console.log('premake', ex.id, result.status, result.error || 'ok')
+      if (!videoReady) {
+        if (!imageDataUrl) imageDataUrl = 'data:image/jpeg;base64,' + fs.readFileSync(posterPath(dataDir, ex.id)).toString('base64')
+        const result = await catalogVideo(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, muscle: ex.m, imageDataUrl })
+        if (!result.url) throw new Error(result.error || 'video')
+      }
+      done += 1
+      if (done % 10 === 0) console.log('premake', done, '/', CATALOG.length)
     } catch (e) {
       console.log('premake', ex.id, 'failed', e?.message || e)
+      await new Promise(resolve => setTimeout(resolve, 15000))
     }
   }
-  console.log('starter guides finished')
+  console.log('catalog guides finished', done, '/', CATALOG.length)
 }
 
 export function guideRoutes({ json, readBody, readSession, dataDir }) {

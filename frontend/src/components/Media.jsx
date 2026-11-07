@@ -43,21 +43,19 @@ function BuiltinMedia({ ex, id, compact, minimizable }) {
   useEffect(() => {
     if (!focused || !userId || !ex?.img || compact || mini || (minimizable && gifSize === 'off')) return
     let gone = false
-    ensurePoster(ex).then(url => { if (!gone && url) setPoster(url) }).catch(() => {})
-    return () => { gone = true }
-  }, [focused, userId, ex?.id, ex?.img, compact, mini, minimizable, gifSize])
-  useEffect(() => {
-    if (!focused || !userId || !ex?.img || !ex?.gif || compact || mini || (minimizable && gifSize === 'off')) return
-    let gone = false
-    setMaking(true)
-    setGuideError('')
-    catalogGuide(ex).then(url => {
-      if (!gone && url) setClipUrl(url)
-    }).catch(e => {
-      if (!gone) setGuideError(e?.message || t('The video guide failed.'))
-    }).finally(() => { if (!gone) setMaking(false) })
-    return () => { gone = true }
-  }, [attempt, focused, userId, ex?.id, ex?.img, compact, mini, minimizable, gifSize])
+    const pull = async () => {
+      const photo = await lookupPoster(ex).catch(() => '')
+      if (!gone && photo) setPoster(photo)
+      if (!ex.gif) return
+      const clip = await lookupClip(ex).catch(() => '')
+      if (gone) return
+      if (clip) { setClipUrl(clip); setMaking(false) }
+      else setMaking(true)
+    }
+    pull()
+    const timer = setInterval(pull, 20000)
+    return () => { gone = true; clearInterval(timer) }
+  }, [attempt, focused, userId, ex?.id, ex?.img, ex?.gif, compact, mini, minimizable, gifSize])
   if (!ex.gif) return null
   if (minimizable && gifSize === 'off') return null
   const toggleSize = e => { e.stopPropagation(); update(s => { s.gifSize = mini ? 'full' : 'mini' }) }
@@ -87,7 +85,7 @@ function BuiltinMedia({ ex, id, compact, minimizable }) {
           <Icon name={mini ? 'expand' : 'minimize'} />{mini ? t('Expand') : t('Minimize')}
         </button>
       )}
-      {making && !clipUrl && <span className="gifhint">{t('Making the video…')}</span>}
+      {making && !clipUrl && <span className="gifhint">{t('Video guide is on the way')}</span>}
       {!!guideError && !clipUrl && !making && <button type="button" className="gifhint" onClick={e => { e.stopPropagation(); setAttempt(n => n + 1) }}>{t('Retry video')}</button>}
       {!mini && !failed && !making && !clipUrl && !poster && !guideError && (
         <span className="gifhint">
@@ -98,63 +96,10 @@ function BuiltinMedia({ ex, id, compact, minimizable }) {
   )
 }
 
-const guideReady = new Map()
-const guidePending = new Map()
-let guideTail = Promise.resolve()
-
-function catalogGuide(ex) {
-  if (guideReady.has(ex.id)) return Promise.resolve(guideReady.get(ex.id))
-  if (guidePending.has(ex.id)) return guidePending.get(ex.id)
-  const job = guideTail.then(() => makeCatalogGuide(ex))
-  guideTail = job.then(() => {}, () => {})
-  guidePending.set(ex.id, job)
-  job.finally(() => guidePending.delete(ex.id))
-  return job
-}
-
-function stillData(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => {
-      const edge = 768
-      const scale = Math.min(1, edge / Math.max(img.naturalWidth || 1, img.naturalHeight || 1))
-      const canvas = document.createElement('canvas')
-      canvas.width = Math.max(1, Math.round((img.naturalWidth || 1) * scale))
-      canvas.height = Math.max(1, Math.round((img.naturalHeight || 1) * scale))
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-      resolve(canvas.toDataURL('image/jpeg', 0.72))
-    }
-    img.onerror = () => reject(new Error('still'))
-    img.src = src
-  })
-}
-
 const posterReady = new Map()
-const posterPending = new Map()
-const posterWait = []
-let posterBusy = 0
+const guideReady = new Map()
 
-function schedulePoster(ex) {
-  if (posterReady.has(ex.id)) return Promise.resolve(posterReady.get(ex.id))
-  if (posterPending.has(ex.id)) return posterPending.get(ex.id)
-  const job = new Promise((resolve, reject) => {
-    const start = () => {
-      posterBusy += 1
-      ensurePoster(ex).then(resolve, reject).finally(() => {
-        posterBusy -= 1
-        const next = posterWait.shift()
-        if (next) next()
-      })
-    }
-    if (posterBusy < 2) start()
-    else posterWait.push(start)
-  })
-  posterPending.set(ex.id, job)
-  job.finally(() => { if (posterPending.get(ex.id) === job) posterPending.delete(ex.id) })
-  return job
-}
-
-async function ensurePoster(ex) {
+async function lookupPoster(ex) {
   if (posterReady.has(ex.id)) return posterReady.get(ex.id)
   try {
     const had = await api('/api/guide/poster?id=' + encodeURIComponent(ex.id))
@@ -162,42 +107,20 @@ async function ensurePoster(ex) {
   } catch (e) {
     if (e.status !== 404) throw e
   }
-  const imageDataUrl = await stillData(imgSrc(ex))
-  const made = await api('/api/guide/poster', {
-    method: 'POST',
-    timeout: 70000,
-    body: JSON.stringify({ id: ex.id, name: ex.n, equipment: ex.eq, muscle: ex.tg || ex.bp, imageDataUrl })
-  })
-  posterReady.set(ex.id, made.url)
-  return made.url
+  return ''
 }
 
-async function makeCatalogGuide(ex) {
-  let source = imgSrc(ex)
-  try {
-    const posterUrl = await ensurePoster(ex)
-    if (posterUrl) source = posterUrl
-  } catch { /* the catalog still is enough to start a clip */ }
+async function lookupClip(ex) {
+  if (guideReady.has(ex.id)) return guideReady.get(ex.id)
   try {
     const had = await api('/api/guide/catalog?id=' + encodeURIComponent(ex.id))
     if (had?.url) { guideReady.set(ex.id, had.url); return had.url }
   } catch (e) {
     if (e.status !== 404) throw e
   }
-  const imageDataUrl = await stillData(source)
-  const made = await api('/api/guide/catalog', {
-    method: 'POST',
-    timeout: 150000,
-    body: JSON.stringify({ id: ex.id, name: ex.n, equipment: ex.eq, muscle: ex.tg || ex.bp, imageDataUrl })
-  })
-  guideReady.set(ex.id, made.url)
-  return made.url
+  return ''
 }
 
-// A still that will not load (offline and never cached, a lapsed session on a gated instance, a
-// CDN hiccup) gets the same neutral tile as an exercise without media, instead of the browser's
-// broken-image glyph in a list of them (#281). The failure is remembered per image, so a list
-// that re-renders does not ask again; a new exercise in the same slot tries its own.
 export function Thumb(p) {
   return p.ex?.custom ? <CustomThumb {...p} /> : <BuiltinThumb {...p} />
 }
@@ -210,8 +133,10 @@ function BuiltinThumb({ ex }) {
     let gone = false
     const known = posterReady.get(ex.id)
     if (known) { setPoster(known); return }
-    schedulePoster(ex).then(url => { if (!gone && url) setPoster(url) }).catch(() => {})
-    return () => { gone = true }
+    const pull = () => lookupPoster(ex).then(url => { if (!gone && url) setPoster(url) }).catch(() => {})
+    pull()
+    const timer = setInterval(() => { if (!posterReady.has(ex.id)) pull() }, 30000)
+    return () => { gone = true; clearInterval(timer) }
   }, [userId, ex?.id, ex?.img])
   const src = poster || (ex.img ? imgSrc(ex) : null)
   if (!src || broken === src) return <div className="thumb thumb-x"><Icon name="dumbbell" /></div>
