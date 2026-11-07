@@ -166,7 +166,7 @@ async function ensurePoster(ex) {
   const made = await api('/api/guide/poster', {
     method: 'POST',
     timeout: 70000,
-    body: JSON.stringify({ id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl })
+    body: JSON.stringify({ id: ex.id, name: ex.n, equipment: ex.eq, muscle: ex.tg || ex.bp, imageDataUrl })
   })
   posterReady.set(ex.id, made.url)
   return made.url
@@ -188,7 +188,7 @@ async function makeCatalogGuide(ex) {
   const made = await api('/api/guide/catalog', {
     method: 'POST',
     timeout: 150000,
-    body: JSON.stringify({ id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl })
+    body: JSON.stringify({ id: ex.id, name: ex.n, equipment: ex.eq, muscle: ex.tg || ex.bp, imageDataUrl })
   })
   guideReady.set(ex.id, made.url)
   return made.url

@@ -135,15 +135,16 @@ function promptFor(move, fromStill) {
   const motion = (move.cues || []).filter(Boolean).join(', then ')
   const action = `one fluid repetition of the ${move.equipment} ${move.name}${motion ? '. The body moves through it in order: ' + motion : ''}.`
   const extra = move.extra ? ' The user says the last clip was wrong. Follow this and let it override the guess: ' + move.extra + '.' : ''
+  const marked = ` Athletic adult, no shirt, athletic shorts only. The ${move.muscle || 'working'} muscle stays highlighted in solid red on the skin for the whole repetition. Do not add a shirt. No text.`
   const frame = 'One single continuous video from one camera. No collage, no storyboard, no comic strip, no stacked stills, no grid, no split screen, no repeated panels, no borders, no letterboxing, no titles, no captions, no logos, no cuts, no extra people.'
-  if (fromStill) return `The attached photo is the first frame. Keep this person, this gym, and this framing, and animate them through ${action}${extra} Do not replace the person or redraw the scene. ${frame}`
-  return `Bright gym, side view. One athletic adult in plain workout clothes performs ${action}${extra} ${frame}`
+  if (fromStill) return `The attached photo is the first frame. Keep this person, this framing, the bare torso, and the red muscle highlight, and animate them through ${action}${extra}${marked} ${frame}`
+  return `Bright gym, side view. One athletic adult with no shirt performs ${action}${extra}${marked} ${frame}`
 }
 
 const GUIDE_ID = /^[0-9A-Za-z_-]{1,64}$/
 
 function guidePath(dataDir, id) {
-  return path.join(dataDir, 'guides', id + '.mp4')
+  return path.join(dataDir, 'guides', id + '-m2.mp4')
 }
 
 function apiError(json, fallback) {
@@ -198,7 +199,7 @@ async function renderVideo(body) {
   const image = typeof body?.imageDataUrl === 'string' && body.imageDataUrl.length <= 700000 && /^data:image\/(jpeg|jpg|png|webp);/i.test(body.imageDataUrl)
     ? body.imageDataUrl
     : ''
-  const move = { name, equipment: clip(body?.equipment, 40) || 'body weight', cues: Array.isArray(body?.cues) ? body.cues.map(c => clip(c, 80)).filter(Boolean).slice(0, 3) : [], extra: clip(body?.prompt, 400) }
+  const move = { name, equipment: clip(body?.equipment, 40) || 'body weight', muscle: clip(body?.muscle, 40), cues: Array.isArray(body?.cues) ? body.cues.map(c => clip(c, 80)).filter(Boolean).slice(0, 3) : [], extra: clip(body?.prompt, 400) }
   try {
     const clipOut = await imagineClip(move, image)
     if (clipOut.error) return { status: 502, error: clipOut.error }
@@ -221,7 +222,7 @@ async function catalogVideo(dataDir, body) {
     ? body.imageDataUrl
     : ''
   if (!image) return { status: 400, error: 'Need the exercise photo.' }
-  const move = { name: clip(body?.name, 80) || 'the exercise', equipment: clip(body?.equipment, 40) || 'body weight', cues: [] }
+  const move = { name: clip(body?.name, 80) || 'the exercise', equipment: clip(body?.equipment, 40) || 'body weight', muscle: clip(body?.muscle, 40), cues: [] }
   try {
     const clipOut = await imagineClip(move, image)
     if (clipOut.error) return { status: 502, error: clipOut.error }
@@ -240,7 +241,7 @@ async function catalogVideo(dataDir, body) {
 }
 
 function posterPath(dataDir, id) {
-  return path.join(dataDir, 'guides', id + '.jpg')
+  return path.join(dataDir, 'guides', id + '-m2.jpg')
 }
 
 function posterUrl(id) {
@@ -259,7 +260,12 @@ function imageBytes(json) {
   return null
 }
 
-const POSTER_PROMPT = 'Professional fitness photograph of this exact exercise and body position. Clean modern gym, soft daylight, sharp focus, one athletic adult in plain dark training clothes, realistic, the working muscles easy to see. Fill the frame. No text, no watermark, no logo, no collage, no extra people.'
+const POSTER_PROMPT = 'Professional fitness photograph of this exact exercise and body position. One athletic adult, no shirt, athletic shorts only, so the working muscle is visible. Paint only that target muscle in a clear solid red highlight on the skin, like a fitness anatomy chart. Every other muscle stays natural skin tone. Clean bright gym, sharp focus, realistic. Fill the frame. No text, no watermark, no logo, no collage, no extra people.'
+
+function stillPrompt(name, equipment, muscle) {
+  const target = muscle ? ' Target muscle, in red: ' + muscle + '.' : ' Mark the single working muscle in red.'
+  return POSTER_PROMPT + target + ' Exercise: ' + (equipment ? equipment + ' ' : '') + name + '.'
+}
 
 const posterJobs = new Map()
 
@@ -322,7 +328,7 @@ async function renderCard(body) {
   const image = typeof body?.imageDataUrl === 'string' && body.imageDataUrl.length <= 700000 && /^data:image\/(jpeg|jpg|png|webp);/i.test(body.imageDataUrl)
     ? body.imageDataUrl
     : ''
-  const still = await imagineStill(POSTER_PROMPT + ' Exercise: ' + (equipment ? equipment + ' ' : '') + name + '.', image)
+  const still = await imagineStill(stillPrompt(name, equipment, clip(body?.muscle, 40)), image)
   if (still.error || !still.buf) return { status: 502, error: still.error || 'Could not make the card.' }
   return { status: 200, dataUrl: 'data:image/jpeg;base64,' + still.buf.toString('base64') }
 }
@@ -342,7 +348,7 @@ async function professionalPoster(dataDir, body) {
   const job = (async () => {
     const name = clip(body?.name, 80) || 'the exercise'
     const equipment = clip(body?.equipment, 40) || 'body weight'
-    const still = await imagineStill(POSTER_PROMPT + ' Exercise: ' + equipment + ' ' + name + '.', image)
+    const still = await imagineStill(stillPrompt(name, equipment, clip(body?.muscle, 40)), image)
     if (still.error || !still.buf) return { status: 502, error: still.error || 'Could not make the preview.' }
     fs.mkdirSync(path.dirname(file), { recursive: true })
     const tmp = file + '.part'
@@ -374,7 +380,7 @@ async function runPremake(dataDir) {
     try {
       const stock = await stockDataUrl(ex.img)
       const hadPoster = fs.existsSync(posterPath(dataDir, ex.id))
-      const poster = await professionalPoster(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl: stock })
+      const poster = await professionalPoster(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, muscle: ex.m, imageDataUrl: stock })
       if (!hadPoster) {
         try { fs.unlinkSync(guidePath(dataDir, ex.id)) } catch { /* the clip will be made from the new photo */ }
       }
@@ -382,7 +388,7 @@ async function runPremake(dataDir) {
       try { videoReady = fs.statSync(guidePath(dataDir, ex.id)).size > 1000 } catch { videoReady = false }
       if (videoReady) { console.log('premake', ex.id, 'poster', poster.status); continue }
       const imageDataUrl = poster.imageDataUrl || ('data:image/jpeg;base64,' + fs.readFileSync(posterPath(dataDir, ex.id)).toString('base64'))
-      const result = await catalogVideo(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, imageDataUrl })
+      const result = await catalogVideo(dataDir, { id: ex.id, name: ex.n, equipment: ex.eq, muscle: ex.m, imageDataUrl })
       console.log('premake', ex.id, result.status, result.error || 'ok')
     } catch (e) {
       console.log('premake', ex.id, 'failed', e?.message || e)

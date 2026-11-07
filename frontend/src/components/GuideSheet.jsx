@@ -162,6 +162,7 @@ function GuideForm({ close }) {
         body: JSON.stringify({
           name: move.name,
           equipment: move.equipment,
+          muscle: move.muscle,
           cues: move.cues,
           prompt: move.prompt || undefined,
           imageDataUrl: frames[0] || undefined
@@ -271,7 +272,7 @@ function exerciseCard(move, image, config) {
   return api('/api/guide/card', {
     method: 'POST',
     timeout: 70000,
-    body: JSON.stringify({ name: move.name, equipment: move.equipment, imageDataUrl: image || undefined })
+    body: JSON.stringify({ name: move.name, equipment: move.equipment, muscle: move.muscle, imageDataUrl: image || undefined })
   }).then(async result => {
     const bin = Uint8Array.from(atob((result.dataUrl || '').split(',')[1] || ''), c => c.charCodeAt(0))
     if (bin.length < 1000) return null
